@@ -1,7 +1,6 @@
 using System;
 using System.Drawing;
 using System.Windows.Forms;
-using System.IO; 
 using Microsoft.Web.WebView2.Core;
 using Microsoft.Web.WebView2.WinForms;
 
@@ -12,53 +11,57 @@ namespace MyLovelyBrowser
         private WebView2 webView;
         private Panel topPanel;
         private TextBox txtUrl;
-        private Button btnGo, btnBack, btnForward, btnRefresh, btnHistory;
+        private Button btnGo, btnBack, btnForward, btnRefresh, btnHome;
 
-        // 历史记录改为绝对路径，确保一定能写进去
-        private string historyPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "history.txt");
-        private string lastAttemptedUrl = "https://www.bing.com";
+        // ❤ 这里定义浏览器的名字，主人可以随便改哦
+        private const string BrowserName = "Ciallo浏览器";
 
         public Form1()
         {
-            this.Text = "Ciallo浏览器 - 初始化中...";
+            this.Text = $"{BrowserName} - 初始化中...";
             this.Size = new Size(1200, 800);
             this.StartPosition = FormStartPosition.CenterScreen;
             try { this.Icon = new Icon("logo.ico"); } catch { }
 
-            // --- 界面布局 ---
+            // --- 1. 顶部面板 ---
             topPanel = new Panel() { Dock = DockStyle.Top, Height = 45, Padding = new Padding(5), BackColor = Color.WhiteSmoke };
             this.Controls.Add(topPanel);
 
-            btnBack = CreateButton("←", 10, false);
+            // --- 2. 按钮群 ---
+            btnBack = CreateButton("←", 10);
             btnBack.Click += (s, e) => { if (webView.CanGoBack) webView.GoBack(); };
             topPanel.Controls.Add(btnBack);
 
-            btnForward = CreateButton("→", 50, false);
+            btnForward = CreateButton("→", 50);
             btnForward.Click += (s, e) => { if (webView.CanGoForward) webView.GoForward(); };
             topPanel.Controls.Add(btnForward);
 
-            btnRefresh = CreateButton("↻", 90, true);
-            btnRefresh.Click += (s, e) => 
-            {
-                // 如果当前是错误页，刷新时重试上次的网址
-                if (webView.Source.ToString().StartsWith("data:")) webView.CoreWebView2.Navigate(lastAttemptedUrl);
-                else webView.Reload(); 
-            };
+            btnRefresh = CreateButton("↻", 90);
+            btnRefresh.Click += (s, e) => webView.Reload();
             topPanel.Controls.Add(btnRefresh);
 
-            btnHistory = CreateButton("H", 130, true);
-            btnHistory.Click += (s, e) => ShowHistoryWindow();
-            topPanel.Controls.Add(btnHistory);
+            btnHome = CreateButton("🏠", 130);
+            btnHome.Click += (s, e) => NavigateToHome();
+            topPanel.Controls.Add(btnHome);
 
             btnGo = new Button() { Text = "Go", Size = new Size(50, 30), Location = new Point(topPanel.Width - 65, 7), Anchor = AnchorStyles.Top | AnchorStyles.Right };
             btnGo.Click += (s, e) => NavigateToSite();
             topPanel.Controls.Add(btnGo);
 
-            txtUrl = new TextBox() { Location = new Point(180, 9), Height = 30, Font = new Font("Segoe UI", 10), Width = topPanel.Width - 180 - 80, Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right };
+            // --- 3. 地址栏 ---
+            txtUrl = new TextBox() { 
+                Location = new Point(175, 9), 
+                Height = 30, 
+                Font = new Font("Segoe UI", 10), 
+                Width = topPanel.Width - 175 - 80, 
+                Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right 
+            };
+            
             txtUrl.KeyDown += (s, e) => { if (e.KeyCode == Keys.Enter) NavigateToSite(); };
-            txtUrl.Click += (s, e) => txtUrl.SelectAll();
+            txtUrl.DoubleClick += (s, e) => txtUrl.SelectAll();
             topPanel.Controls.Add(txtUrl);
 
+            // --- 4. 浏览器主体 ---
             webView = new WebView2() { Dock = DockStyle.Fill };
             this.Controls.Add(webView);
             webView.BringToFront();
@@ -66,200 +69,160 @@ namespace MyLovelyBrowser
             InitializeWebView();
         }
 
-        private Button CreateButton(string text, int x, bool enabled)
+        private Button CreateButton(string text, int x)
         {
-            return new Button() { Text = text, Location = new Point(x, 7), Size = new Size(35, 30), Enabled = enabled };
+            return new Button() { Text = text, Location = new Point(x, 7), Size = new Size(35, 30) };
         }
 
         async void InitializeWebView()
         {
             await webView.EnsureCoreWebView2Async(null);
 
-            // 🔥🔥🔥 核心修复 1：禁止弹出新窗口，强制在当前窗口跳转 🔥🔥🔥
-            // 这解决了地址栏不更新、历史记录不生效、点链接跳出窗口的所有问题
+            // 禁止新窗口
             webView.CoreWebView2.NewWindowRequested += (s, e) =>
             {
-                e.Handled = true; // 告诉浏览器：你别弹窗，我来处理
-                webView.CoreWebView2.Navigate(e.Uri); // 在当前窗口打开该链接
-            };
-
-            // 历史后退检查
-            webView.CoreWebView2.HistoryChanged += (s, e) =>
-            {
-                btnBack.Enabled = webView.CanGoBack;
-                btnForward.Enabled = webView.CanGoForward;
+                e.Handled = true;
+                webView.CoreWebView2.Navigate(e.Uri);
             };
 
             // 地址栏同步
             webView.SourceChanged += (s, e) =>
             {
-                string currentSrc = webView.Source.ToString();
-                // 只有不是错误页(data:)的时候才更新地址栏，避免地址栏显示乱七八糟的代码
-                if (!currentSrc.StartsWith("data:"))
-                {
-                    txtUrl.Text = currentSrc;
-                    lastAttemptedUrl = currentSrc; // 更新“上次尝试的网址”
-                }
+                 if (!txtUrl.Focused) 
+                 {
+                     string src = webView.Source.ToString();
+                     if (src.StartsWith("data:")) txtUrl.Text = "🏠 主页";
+                     else txtUrl.Text = src;
+                 }
             };
-
-            // 标题同步
+            
+            // 🔥🔥🔥 核心修改在这里：标题同步 + 后缀 🔥🔥🔥
             webView.CoreWebView2.DocumentTitleChanged += (s, e) =>
             {
-                string title = webView.CoreWebView2.DocumentTitle;
-                if(string.IsNullOrEmpty(title)) title = "加载中...";
-                this.Text = title;
-            };
-
-            // 🔥🔥🔥 核心修复 2：错误页面拦截逻辑优化 🔥🔥🔥
-            webView.CoreWebView2.NavigationCompleted += (s, e) =>
-            {
-                // 排除空白页和 data 页
-                if (webView.Source.ToString().StartsWith("data:") || webView.Source.ToString() == "about:blank") return;
-
-                bool isNetworkError = !e.IsSuccess;
-                bool isHttpError = (e.HttpStatusCode >= 400);
-
-                if (isNetworkError || isHttpError)
+                string pageTitle = webView.CoreWebView2.DocumentTitle;
+                
+                // 如果标题是空的（或者是主页），就显示默认名字
+                if (string.IsNullOrEmpty(pageTitle) || pageTitle == "about:blank")
                 {
-                    string errorTitle = "哎呀，出错了";
-                    string errorDesc = "";
-                    string errorColor = "#ff6b6b"; 
-
-                    if (isNetworkError)
-                    {
-                        errorTitle = "无法连接到网络";
-                        errorDesc = $"错误代码: {e.WebErrorStatus}";
-                    }
-                    else if (e.HttpStatusCode == 404)
-                    {
-                        errorTitle = "找不到页面 (404)";
-                        errorDesc = "主人，您要去的地方好像是一片荒原...";
-                        errorColor = "#fca311";
-                    }
-                    else if (e.HttpStatusCode == 403)
-                    {
-                        errorTitle = "禁止访问 (403)";
-                        errorDesc = "这里是禁区！乐奈没有权限进去...";
-                    }
-                    else
-                    {
-                        errorTitle = $"服务器报错 ({e.HttpStatusCode})";
-                        errorDesc = "服务器好像冒烟了...";
-                    }
-                    
-                    ShowErrorPage(errorTitle, errorDesc, errorColor);
+                    this.Text = BrowserName;
                 }
                 else
                 {
-                    // 只有成功才记录历史
-                    string title = webView.CoreWebView2.DocumentTitle;
-                    if (string.IsNullOrEmpty(title)) title = "网页";
-                    RecordHistory(title, webView.Source.ToString());
+                    // 拼接格式：[网页标题] - [浏览器名字]
+                    this.Text = $"{pageTitle} - {BrowserName}";
                 }
             };
 
-            webView.CoreWebView2.Navigate(lastAttemptedUrl);
+            // 启动进主页
+            NavigateToHome();
         }
 
-        // --- 历史记录 (修复路径问题) ---
-        private void RecordHistory(string title, string url)
+        // --- 主页 (保持之前的 Bing 搜索版) ---
+        void NavigateToHome()
         {
-            try
-            {
-                // 忽略 data: 页面
-                if (url.StartsWith("data:")) return;
-
-                string logLine = $"{DateTime.Now:MM-dd HH:mm}|{title}|{url}{Environment.NewLine}";
-                // 使用 AppendAllText 会自动创建文件
-                File.AppendAllText(historyPath, logLine);
-            }
-            catch(Exception ex) 
-            {
-                // 可以在这里打断点调试，但在生产环境静默失败防止崩溃
-                System.Diagnostics.Debug.WriteLine("写历史失败: " + ex.Message);
-            }
-        }
-
-        private void ShowHistoryWindow()
-        {
-            Form historyForm = new Form();
-            historyForm.Text = "浏览足迹";
-            historyForm.Size = new Size(600, 400);
-            historyForm.StartPosition = FormStartPosition.CenterParent;
-            try { historyForm.Icon = this.Icon; } catch { }
-
-            ListBox listBox = new ListBox();
-            listBox.Dock = DockStyle.Fill;
-            listBox.Font = new Font("Segoe UI", 10);
-            
-            if (File.Exists(historyPath))
-            {
-                string[] lines = File.ReadAllLines(historyPath);
-                Array.Reverse(lines); // 最新的在上面
-                listBox.Items.AddRange(lines);
-            }
-            else
-            {
-                listBox.Items.Add($"还没有历史记录哦 (文件路径: {historyPath})");
-            }
-
-            listBox.DoubleClick += (s, e) =>
-            {
-                if (listBox.SelectedItem != null)
-                {
-                    string item = listBox.SelectedItem.ToString();
-                    string[] parts = item.Split('|');
-                    if (parts.Length >= 3)
-                    {
-                        string targetUrl = parts[2];
-                        webView.CoreWebView2.Navigate(targetUrl);
-                        historyForm.Close();
+            string html = @"
+            <html>
+            <head>
+			    <meta name='viewport' content='width=device-width, initial-scale=1.0'>
+                <meta charset='utf-8'>
+                <title>新标签页</title>
+				<style>
+                    body { 
+                        font-family: 'Segoe UI', sans-serif; 
+                        display: flex; flex-direction: column; align-items: center; justify-content: center; 
+                        height: 100vh; margin: 0; 
+                        background-color: #f9f9f9; color: #333;
+                        transition: background 0.3s, color 0.3s;
                     }
-                }
-            };
-
-            historyForm.Controls.Add(listBox);
-            historyForm.ShowDialog(this);
-        }
-
-        // --- 错误页生成 ---
-        private void ShowErrorPage(string title, string desc, string color)
-        {
-            string htmlContent = $@"
-                <html>
-                <head>
-                    <meta name='viewport' content='initial-scale=1,minimum-scale=1,width=device-width,interactive-widget=resizes-content'>
-					<meta charset='utf-8'>
-                    <style>
-                        body {{ font-family: 'Segoe UI', sans-serif; background-color: #f0f2f5; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; }}
-                        .container {{ text-align: center; background: white; padding: 40px; border-radius: 20px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); max-width: 500px; }}
-                        h1 {{ color: {color}; margin-bottom: 10px; font-size: 32px; }} 
-                        p {{ color: #666; font-size: 18px; margin-bottom: 30px; }}
-                        .icon {{ font-size: 80px; margin-bottom: 20px; }}
-                    </style>
-                </head>
-                <body>
-                    <div class='container'>
-                        <div class='icon'>(＞﹏＜)</div>
-                        <h1>{title}</h1>
-                        <p>{desc}</p>
-                        <p style='font-size: 14px; color: #999;'>您可以点击上方的刷新按钮重试哦~</p>
-                    </div>
-                </body>
-                </html>";
-
-            webView.NavigateToString(htmlContent);
+                    .logo { font-size: 60px; margin-bottom: 20px; cursor: default; }
+                    .search-container { position: relative; width: 500px; max-width: 90%; }
+                    .search-input {
+                        width: 100%; padding: 15px 20px; 
+                        font-size: 18px; border-radius: 30px; border: 1px solid #ddd;
+                        outline: none; box-shadow: 0 4px 10px rgba(0,0,0,0.1);
+                        transition: box-shadow 0.2s;
+                        box-sizing: border-box; 
+                    }
+                    .search-input:focus { box-shadow: 0 6px 15px rgba(0,0,0,0.15); }
+                    .suggestions {
+                        position: absolute; top: 55px; left: 0; right: 0;
+                        background: white; border-radius: 15px;
+                        box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+                        overflow: hidden; display: none; z-index: 100; text-align: left;
+                    }
+                    .suggestion-item { padding: 10px 20px; cursor: pointer; font-size: 16px; }
+                    .suggestion-item:hover { background-color: #eee; }
+                    @media (prefers-color-scheme: dark) {
+                        body { background-color: #1e1e1e; color: #e0e0e0; }
+                        .search-input { background-color: #2d2d2d; border-color: #444; color: white; }
+                        .suggestions { background-color: #2d2d2d; border: 1px solid #444; }
+                        .suggestion-item:hover { background-color: #3d3d3d; }
+                    }
+                </style>
+            </head>
+            <body>
+                <div class='logo'>(≧∇≦)ﾉ</div>
+                <div class='search-container'>
+                    <input type='text' id='inputBox' class='search-input' placeholder='Search Bing...' autocomplete='off' />
+                    <div id='list' class='suggestions'></div>
+                </div>
+                <script>
+                    const inputBox = document.getElementById('inputBox');
+                    const list = document.getElementById('list');
+                    inputBox.addEventListener('input', function() {
+                        const val = this.value;
+                        if (!val) { list.style.display = 'none'; return; }
+                        const script = document.createElement('script');
+                        script.src = 'https://api.bing.com/qsonhs.aspx?type=cb&q=' + encodeURIComponent(val) + '&cb=bingCallback';
+                        document.body.appendChild(script);
+                    });
+                    inputBox.addEventListener('keydown', function(e) {
+                        if (e.key === 'Enter') doSearch(this.value);
+                    });
+                    window.bingCallback = function(data) {
+                        list.innerHTML = '';
+                        if (data && data.AS && data.AS.Results && data.AS.Results.length > 0) {
+                            data.AS.Results[0].Suggests.forEach(item => {
+                                const div = document.createElement('div');
+                                div.className = 'suggestion-item';
+                                div.innerText = item.Txt;
+                                div.onclick = function() { doSearch(item.Txt); };
+                                list.appendChild(div);
+                            });
+                            list.style.display = 'block';
+                        } else { list.style.display = 'none'; }
+                    };
+                    function doSearch(text) {
+                        if(text) window.location.href = 'https://www.bing.com/search?q=' + encodeURIComponent(text);
+                    }
+                    document.addEventListener('click', function(e) {
+                        if (e.target !== inputBox) list.style.display = 'none';
+                    });
+                </script>
+            </body>
+            </html>";
+            webView.NavigateToString(html);
         }
 
         void NavigateToSite()
         {
-            string url = txtUrl.Text.Trim();
-            if (!string.IsNullOrEmpty(url))
+            string input = txtUrl.Text.Trim();
+            if (string.IsNullOrEmpty(input) || input == "🏠 主页") return;
+
+            string targetUrl = "";
+            if (input.Contains(" ") || (!input.Contains(".") && !input.StartsWith("http")))
             {
-                if (!url.StartsWith("http://") && !url.StartsWith("https://")) url = "https://" + url;
-                lastAttemptedUrl = url;
-                webView.CoreWebView2.Navigate(url);
+                targetUrl = "https://www.bing.com/search?q=" + System.Web.HttpUtility.UrlEncode(input);
             }
+            else
+            {
+                targetUrl = input;
+                if (!targetUrl.StartsWith("http://") && !targetUrl.StartsWith("https://"))
+                {
+                    targetUrl = "https://" + targetUrl;
+                }
+            }
+            webView.CoreWebView2.Navigate(targetUrl);
         }
     }
 }
