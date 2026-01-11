@@ -1,11 +1,11 @@
-name: Build My Browser
+name: Build Browser
 
-# 当主人推送代码(push)或者手动点击(workflow_dispatch)时触发
+# 当推送代码(push)或者手动点击(workflow_dispatch)时触发
 on: [push, workflow_dispatch]
 
 jobs:
   build:
-    runs-on: windows-latest  # 必须用 Windows 环境编译 WinForms 哦
+    runs-on: windows-latest  # 必须用 Windows 环境来编译 WinForms
 
     steps:
     - name: Checkout Code (拉取代码)
@@ -19,9 +19,10 @@ jobs:
     - name: Restore Dependencies (下载 WebView2 包)
       run: dotnet restore
 
-    - name: Build (开始编译)
-      # Release 模式，输出到 publish 文件夹
-      run: dotnet build -c Release -o ./publish
+    - name: Publish (发布单文件)
+      # 使用 publish 命令，指定 Release 配置，指定 win-x64 平台
+      # --no-self-contained 对应csproj里的设置，减小体积
+      run: dotnet publish -c Release -r win-x64 --no-self-contained -o ./publish
 
     - name: Upload Artifact (上传成品)
       uses: actions/upload-artifact@v4
