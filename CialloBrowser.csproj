@@ -10,7 +10,7 @@
     <AssemblyName>CialloBrowser</AssemblyName> 
     <ApplicationIcon>logo.ico</ApplicationIcon>
 
-    <Version>0.721.114.514</Version>
+    <Version>0.721.114</Version>
     <Authors>rui</Authors>
     <Company>Borui Studio</Company>
     <Product>CialloBrowser</Product>
@@ -29,4 +29,5 @@
   </ItemGroup>
 
 </Project>
+
 
