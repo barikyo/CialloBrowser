@@ -15,7 +15,12 @@
     <Company>Borui Studio</Company>
     <Product>CialloBrowser</Product>
     <Copyright>Copyright © 2026 barikyo</Copyright>
-    </PropertyGroup>
+
+    <PublishSingleFile>true</PublishSingleFile>
+    <SelfContained>false</SelfContained> 
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
+</PropertyGroup>
 
   <ItemGroup>
     <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.2210.55" />
@@ -23,11 +28,12 @@
   </ItemGroup>
 
   <ItemGroup>
-    <Content Include="logo.ico">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </Content>
+    <EmbeddedResource Include="logo.ico" />
   </ItemGroup>
 
 </Project>
+
+
+    
 
 
