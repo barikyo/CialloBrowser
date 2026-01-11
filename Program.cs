@@ -1,7 +1,7 @@
 using System;
 using System.Windows.Forms;
 
-namespace MyLovelyBrowser
+namespace CialloBrowser
 {
     static class Program
     {
@@ -13,4 +13,5 @@ namespace MyLovelyBrowser
             Application.Run(new Form1());
         }
     }
+
 }
