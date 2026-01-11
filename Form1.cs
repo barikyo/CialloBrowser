@@ -216,6 +216,7 @@ namespace MyLovelyBrowser
                 <html>
                 <head>
                     <meta charset='utf-8'>
+                    <meta name='viewport' content='initial-scale=1,minimum-scale=1,width=device-width,interactive-widget=resizes-content'>
                     <style>
                         body {{ font-family: 'Segoe UI', sans-serif; background-color: #f0f2f5; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; }}
                         .container {{ text-align: center; background: white; padding: 40px; border-radius: 20px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); max-width: 500px; }}
@@ -249,3 +250,4 @@ namespace MyLovelyBrowser
         }
     }
 }
+
