@@ -1,4 +1,4 @@
-# 🌐 Ciallo Browser (乐奈浏览器)
+# 🌐 Ciallo Browser (Ciallo浏览器)
 
 ![Build Status](https://img.shields.io/github/actions/workflow/status/barikyo/CialloBrowser/build.yml?label=Build&style=flat-square)
 ![License](https://img.shields.io/badge/license-MIT-blue?style=flat-square)
@@ -7,7 +7,7 @@
 
 一个基于 **Microsoft WebView2 (Chromium)** 内核，使用 **C# WinForms** 打造的轻量级、现代化、极简风格浏览器。
 
-> "简约而不简单，为您提供最纯粹的浏览体验。" —— Ciallo Studio
+> "简约而不简单，为您提供最纯粹的浏览体验。"
 
 ---
 
