@@ -17,6 +17,10 @@ namespace MyLovelyBrowser
 
         private const string BrowserName = "Ciallo浏览器";
 
+        // 定义一个固定的数据文件夹路径，不再随 exe 名字变动
+        // 这样数据就会稳定保存在程序旁边的 "UserData" 文件夹里
+        private readonly string fixedUserDataFolder = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "UserData");
+
         public Form1()
         {
             this.Text = $"{BrowserName} - 初始化中...";
@@ -81,7 +85,11 @@ namespace MyLovelyBrowser
 
         async void InitializeWebView()
         {
-            await webView.EnsureCoreWebView2Async(null);
+            // 显式创建环境，指定数据文件夹
+            var env = await CoreWebView2Environment.CreateAsync(null, fixedUserDataFolder);
+            
+            // 使用自定义环境初始化
+            await webView.EnsureCoreWebView2Async(env);
 
             webView.CoreWebView2.NewWindowRequested += (s, e) =>
             {
@@ -94,7 +102,7 @@ namespace MyLovelyBrowser
                  if (!txtUrl.Focused) 
                  {
                      string src = webView.Source.ToString();
-                     if (src.StartsWith("data:")) txtUrl.Text = "🏠 主页"; // 显示更友好的名字
+                     if (src.StartsWith("data:")) txtUrl.Text = "🏠 主页"; 
                      else txtUrl.Text = src;
                  }
             };
@@ -109,7 +117,7 @@ namespace MyLovelyBrowser
             NavigateToHome();
         }
 
-        // --- 历史记录 (直连 SQLite) ---
+        // --- 历史记录 (读取固定路径) ---
         private void ShowHistoryWindow()
         {
             Form historyForm = new Form();
@@ -123,13 +131,14 @@ namespace MyLovelyBrowser
             listBox.Font = new Font("Segoe UI", 10);
             listBox.IntegralHeight = false;
 
-            string exeName = AppDomain.CurrentDomain.FriendlyName; 
-            string userDataFolder = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, exeName + ".WebView2");
-            string dbPath = Path.Combine(userDataFolder, "EBWebView", "Default", "History");
+            // 路径结构固定为: UserData/EBWebView/Default/History
+            string dbPath = Path.Combine(fixedUserDataFolder, "EBWebView", "Default", "History");
 
             if (!File.Exists(dbPath))
             {
-                listBox.Items.Add("这里空空如也... (还没开始浏览网页呢)");
+                // 如果还没生成文件，提示一下路径，方便调试
+                listBox.Items.Add($"暂无记录");
+                listBox.Items.Add($"历史文件期待路径: {dbPath}");
             }
             else
             {
@@ -140,7 +149,8 @@ namespace MyLovelyBrowser
                     {
                         connection.Open();
                         var command = connection.CreateCommand();
-                        command.CommandText = "SELECT title, url FROM urls ORDER BY last_visit_time DESC LIMIT 50";
+                        // 稍微优化了一下 SQL，只显示 http 开头的正常网页
+                        command.CommandText = "SELECT title, url FROM urls WHERE url LIKE 'http%' ORDER BY last_visit_time DESC LIMIT 50";
                         using (var reader = command.ExecuteReader())
                         {
                             while (reader.Read())
@@ -178,7 +188,7 @@ namespace MyLovelyBrowser
             historyForm.ShowDialog(this);
         }
 
-        // --- 主页 (新增提示语 + 布局优化) ---
+        // --- 主页 (保持不变) ---
         void NavigateToHome()
         {
             string html = @"
@@ -188,65 +198,33 @@ namespace MyLovelyBrowser
                 <meta name='viewport' content='width=device-width, initial-scale=1.0'>
                 <title>新标签页</title>
                 <style>
-                    body { 
-                        font-family: 'Segoe UI', sans-serif; 
-                        display: flex; flex-direction: column; align-items: center; justify-content: center; 
-                        height: 100vh; margin: 0; 
-                        background-color: #f9f9f9; color: #333; 
-                        transition: background 0.3s, color 0.3s; 
-                    }
+                    body { font-family: 'Segoe UI', sans-serif; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; margin: 0; background-color: #f9f9f9; color: #333; transition: background 0.3s, color 0.3s; }
                     .logo { font-size: 60px; margin-bottom: 20px; cursor: default; }
                     .search-container { position: relative; width: 500px; max-width: 90%; }
-                    
-                    .search-input { 
-                        width: 100%; padding: 15px 20px; 
-                        font-size: 18px; border-radius: 30px; border: 1px solid #ddd; 
-                        outline: none; box-shadow: 0 4px 10px rgba(0,0,0,0.1); 
-                        transition: box-shadow 0.2s; box-sizing: border-box; 
-                    }
+                    .search-input { width: 100%; padding: 15px 20px; font-size: 18px; border-radius: 30px; border: 1px solid #ddd; outline: none; box-shadow: 0 4px 10px rgba(0,0,0,0.1); transition: box-shadow 0.2s; box-sizing: border-box; }
                     .search-input:focus { box-shadow: 0 6px 15px rgba(0,0,0,0.15); }
-                    
-                    /* 新增的提示语样式 */
-                    .hint-text {
-                        margin-top: 15px;
-                        font-size: 13px;
-                        color: #999;
-                        text-align: center;
-                    }
-
-                    .suggestions { 
-                        position: absolute; top: 55px; left: 0; right: 0; 
-                        background: white; border-radius: 15px; 
-                        box-shadow: 0 4px 15px rgba(0,0,0,0.1); 
-                        overflow: hidden; display: none; z-index: 100; text-align: left; 
-                    }
+                    .hint-text { margin-top: 15px; font-size: 13px; color: #999; text-align: center; }
+                    .suggestions { position: absolute; top: 55px; left: 0; right: 0; background: white; border-radius: 15px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); overflow: hidden; display: none; z-index: 100; text-align: left; }
                     .suggestion-item { padding: 10px 20px; cursor: pointer; font-size: 16px; }
                     .suggestion-item:hover { background-color: #eee; }
-                    
                     @media (prefers-color-scheme: dark) {
                         body { background-color: #1e1e1e; color: #e0e0e0; }
                         .search-input { background-color: #2d2d2d; border-color: #444; color: white; }
                         .suggestions { background-color: #2d2d2d; border: 1px solid #444; }
                         .suggestion-item:hover { background-color: #3d3d3d; }
-                        /* 深色模式下的提示文字颜色 */
                         .hint-text { color: #666; }
                     }
                 </style>
             </head>
             <body>
-                <div class='logo'>Ciallo ～(∠・ω< )⌒★</div>
-                
+                <div class='logo'>(≧∇≦)ﾉ</div>
                 <div class='search-container'>
                     <input type='text' id='inputBox' class='search-input' placeholder='Search Bing...' autocomplete='off' />
-                    
-                    <div class='hint-text'>这个是搜索框！输入网址请到最上面的地址栏哦 ↑</div>
-
+                    <div class='hint-text'>输入网址请到上面的地址栏哦 ↑</div>
                     <div id='list' class='suggestions'></div>
                 </div>
-
                 <script>
-                    const inputBox = document.getElementById('inputBox'); 
-                    const list = document.getElementById('list');
+                    const inputBox = document.getElementById('inputBox'); const list = document.getElementById('list');
                     inputBox.addEventListener('input', function() {
                         const val = this.value; if (!val) { list.style.display = 'none'; return; }
                         const script = document.createElement('script');
@@ -271,31 +249,16 @@ namespace MyLovelyBrowser
             webView.NavigateToString(html);
         }
 
-        // --- 核心导航逻辑 (拦截 about:blank) ---
         void NavigateToSite()
         {
             string input = txtUrl.Text.Trim();
-            
-            // 拦截 about:blank，回 HTML 主页
             if (string.IsNullOrEmpty(input) || input == "🏠 主页" || input.ToLower() == "about:blank") 
             {
-                NavigateToHome();
-                return;
+                NavigateToHome(); return;
             }
-
             string targetUrl = "";
-            if (input.Contains(" ") || (!input.Contains(".") && !input.StartsWith("http"))) 
-            {
-                targetUrl = "https://www.bing.com/search?q=" + System.Web.HttpUtility.UrlEncode(input);
-            }
-            else 
-            { 
-                targetUrl = input; 
-                if (!targetUrl.StartsWith("http://") && !targetUrl.StartsWith("https://")) 
-                {
-                    targetUrl = "https://" + targetUrl; 
-                }
-            }
+            if (input.Contains(" ") || (!input.Contains(".") && !input.StartsWith("http"))) targetUrl = "https://www.bing.com/search?q=" + System.Web.HttpUtility.UrlEncode(input);
+            else { targetUrl = input; if (!targetUrl.StartsWith("http://") && !targetUrl.StartsWith("https://")) targetUrl = "https://" + targetUrl; }
             webView.CoreWebView2.Navigate(targetUrl);
         }
     }
