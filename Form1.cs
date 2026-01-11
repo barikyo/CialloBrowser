@@ -1,7 +1,7 @@
 using System;
 using System.Drawing;
 using System.Windows.Forms;
-using System.IO; // 需要这个来读写文件
+using System.IO; 
 using Microsoft.Web.WebView2.Core;
 using Microsoft.Web.WebView2.WinForms;
 
@@ -13,34 +13,27 @@ namespace MyLovelyBrowser
         private WebView2 webView;
         private Panel topPanel;
         private TextBox txtUrl;
-        private Button btnGo, btnBack, btnForward, btnRefresh, btnHistory; // 新增历史按钮
+        private Button btnGo, btnBack, btnForward, btnRefresh, btnHistory;
 
-        // 记录最后一次尝试的网址（用于刷新重试）
+        // 记录最后一次尝试的网址
         private string lastAttemptedUrl = "https://www.bing.com";
         
-        // 历史记录保存的文件名
+        // 历史记录文件名
         private const string HistoryFileName = "history.txt";
 
         public Form1()
         {
-            this.Text = "CialloBrowser";
+            this.Text = "正在初始化...";
             this.Size = new Size(1200, 800);
             this.StartPosition = FormStartPosition.CenterScreen;
 
-            try 
-            { 
-                this.Icon = new Icon("logo.ico"); 
-            } 
-            catch 
-            { 
-                // 就算找不到图标也不要报错，用默认的就好
-            }
+            // 尝试设置图标（如果没有图标文件也不会报错）
+            try { this.Icon = new Icon("logo.ico"); } catch { }
 
             // --- UI 布局 ---
             topPanel = new Panel() { Dock = DockStyle.Top, Height = 45, Padding = new Padding(5), BackColor = Color.WhiteSmoke };
             this.Controls.Add(topPanel);
 
-            // 按钮工厂
             btnBack = CreateButton("←", 10, false);
             btnBack.Click += (s, e) => { if (webView.CanGoBack) webView.GoBack(); };
             topPanel.Controls.Add(btnBack);
@@ -57,17 +50,14 @@ namespace MyLovelyBrowser
             };
             topPanel.Controls.Add(btnRefresh);
 
-            // 🔥 [新增] 历史记录按钮
             btnHistory = CreateButton("H", 130, true);
             btnHistory.Click += (s, e) => ShowHistoryWindow();
             topPanel.Controls.Add(btnHistory);
 
-            // 前往按钮
             btnGo = new Button() { Text = "Go", Size = new Size(50, 30), Location = new Point(topPanel.Width - 65, 7), Anchor = AnchorStyles.Top | AnchorStyles.Right };
             btnGo.Click += (s, e) => NavigateToSite();
             topPanel.Controls.Add(btnGo);
 
-            // 地址栏 (注意调整位置，因为加了历史按钮)
             txtUrl = new TextBox() { Location = new Point(180, 9), Height = 30, Font = new Font("Segoe UI", 10), Width = topPanel.Width - 180 - 80, Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right };
             txtUrl.KeyDown += (s, e) => { if (e.KeyCode == Keys.Enter) NavigateToSite(); };
             txtUrl.Click += (s, e) => txtUrl.SelectAll();
@@ -89,7 +79,6 @@ namespace MyLovelyBrowser
         {
             await webView.EnsureCoreWebView2Async(null);
 
-            // 状态更新
             webView.CoreWebView2.HistoryChanged += (s, e) =>
             {
                 btnBack.Enabled = webView.CanGoBack;
@@ -110,7 +99,7 @@ namespace MyLovelyBrowser
             {
                 string title = webView.CoreWebView2.DocumentTitle;
                 if(string.IsNullOrEmpty(title)) title = "加载中...";
-                this.Text = title + " - CialloBrowser";
+                this.Text = title + " - 主人的浏览器";
             };
 
             // 🔥 导航完成：处理错误 + 记录历史
@@ -124,7 +113,7 @@ namespace MyLovelyBrowser
                 {
                     string errorTitle = "哎呀，出错了";
                     string errorDesc = "";
-                    string errorColor = "#ff6b6b"; // 红色警告
+                    string errorColor = "#ff6b6b"; // 默认红色
 
                     if (isNetworkError)
                     {
@@ -148,12 +137,12 @@ namespace MyLovelyBrowser
                         errorDesc = "对方服务器好像坏掉了...";
                     }
 
-                    // 调用显示错误页面的函数
+                    // 调用 3 个参数的函数
                     ShowErrorPage(errorTitle, errorDesc, errorColor);
                 }
                 else 
                 {
-                    // 2. 🔥 如果成功加载，并且不是特殊的错误页，就记录历史！
+                    // 2. 成功加载，记录历史
                     string currentUrl = webView.Source.ToString();
                     string currentTitle = webView.CoreWebView2.DocumentTitle;
                     
@@ -167,37 +156,33 @@ namespace MyLovelyBrowser
             webView.CoreWebView2.Navigate(lastAttemptedUrl);
         }
 
-        // --- 历史记录核心逻辑 ---
-
-        // 1. 写入文件
+        // --- 历史记录 ---
         private void RecordHistory(string title, string url)
         {
             try
             {
-                // 格式：时间 | 标题 | 网址
                 string logLine = $"{DateTime.Now:MM-dd HH:mm}|{title}|{url}{Environment.NewLine}";
                 File.AppendAllText(HistoryFileName, logLine);
             }
-            catch { /* 记录失败就算啦，不要因为这个崩掉 */ }
+            catch { }
         }
 
-        // 2. 显示历史窗口
         private void ShowHistoryWindow()
         {
             Form historyForm = new Form();
             historyForm.Text = "浏览足迹";
             historyForm.Size = new Size(600, 400);
             historyForm.StartPosition = FormStartPosition.CenterParent;
+            // 尝试给历史窗口也加个图标
+            try { historyForm.Icon = this.Icon; } catch { }
 
             ListBox listBox = new ListBox();
             listBox.Dock = DockStyle.Fill;
             listBox.Font = new Font("Segoe UI", 10);
             
-            // 读取文件
             if (File.Exists(HistoryFileName))
             {
                 string[] lines = File.ReadAllLines(HistoryFileName);
-                // 倒序排列，最新的在最上面
                 Array.Reverse(lines);
                 listBox.Items.AddRange(lines);
             }
@@ -206,19 +191,16 @@ namespace MyLovelyBrowser
                 listBox.Items.Add("还没有去过任何地方哦...");
             }
 
-            // 双击跳转
             listBox.DoubleClick += (s, e) =>
             {
                 if (listBox.SelectedItem != null)
                 {
                     string item = listBox.SelectedItem.ToString();
-                    // 分割字符串找到 URL (这是很简单粗暴的方法)
                     string[] parts = item.Split('|');
                     if (parts.Length >= 3)
                     {
-                        string targetUrl = parts[2]; // 第3部分是网址
-                        webView.CoreWebView2.Navigate(targetUrl);
-                        historyForm.Close(); // 跳转后关闭历史窗口
+                        webView.CoreWebView2.Navigate(parts[2]);
+                        historyForm.Close();
                     }
                 }
             };
@@ -227,18 +209,17 @@ namespace MyLovelyBrowser
             historyForm.ShowDialog(this);
         }
 
-        // --- 错误页逻辑 (保持不变) ---
-        private void ShowErrorPage(string title, string desc)
+        // 🔥🔥🔥 修复重点：这里加回了 color 参数 🔥🔥🔥
+        private void ShowErrorPage(string title, string desc, string color)
         {
             string htmlContent = $@"
                 <html>
                 <head>
-				    <meta name='viewport' content='initial-scale=1,minimum-scale=1,width=device-width,interactive-widget=resizes-content'>
                     <meta charset='utf-8'>
                     <style>
                         body {{ font-family: 'Segoe UI', sans-serif; background-color: #f0f2f5; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; }}
                         .container {{ text-align: center; background: white; padding: 40px; border-radius: 20px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); max-width: 500px; }}
-                        h1 {{ color: {color}; margin-bottom: 10px; font-size: 32px; }}
+                        h1 {{ color: {color}; margin-bottom: 10px; font-size: 32px; }} 
                         p {{ color: #666; font-size: 18px; margin-bottom: 30px; }}
                         .icon {{ font-size: 80px; margin-bottom: 20px; }}
                     </style>
@@ -252,6 +233,7 @@ namespace MyLovelyBrowser
                     </div>
                 </body>
                 </html>";
+
             webView.NavigateToString(htmlContent);
         }
 
