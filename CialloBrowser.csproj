@@ -1,14 +1,21 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
-  <PropertyGroup>
+<PropertyGroup>
     <OutputType>WinExe</OutputType>
     <TargetFramework>net8.0-windows</TargetFramework>
     <UseWindowsForms>true</UseWindowsForms>
     <Nullable>disable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
-    <AssemblyName>CialloBrowser</AssemblyName>
+    
+    <AssemblyName>CialloBrowser</AssemblyName> 
     <ApplicationIcon>logo.ico</ApplicationIcon>
-  </PropertyGroup>
+
+    <Version>0.721.114.514</Version>
+    <Authors>rui</Authors>
+    <Company>Borui Studio</Company>
+    <Product>CialloBrowser</Product>
+    <Copyright>Copyright © 2026 barikyo</Copyright>
+    </PropertyGroup>
 
   <ItemGroup>
     <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.2210.55" />
@@ -22,3 +29,4 @@
   </ItemGroup>
 
 </Project>
+
