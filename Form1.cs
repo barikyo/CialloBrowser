@@ -48,13 +48,11 @@ namespace MyLovelyBrowser
             topPanel.Controls.Add(btnHome);
 
             btnHistory = CreateButton("H", 170);
-            // 历史记录按钮
             btnHistory.Click += (s, e) => ShowHistoryWindow();
             topPanel.Controls.Add(btnHistory);
 
             btnClear = CreateButton("🧹", 210);
             btnClear.ForeColor = Color.Red;
-            // 清理按钮
             btnClear.Click += (s, e) => ShowClearDataDialog(); 
             topPanel.Controls.Add(btnClear);
 
@@ -115,7 +113,7 @@ namespace MyLovelyBrowser
             NavigateToHome();
         }
 
-        // 修改：历史记录（复制副本模式）
+        // --- 历史记录（复制副本模式） ---
         private void ShowHistoryWindow()
         {
             Form historyForm = new Form();
@@ -129,9 +127,7 @@ namespace MyLovelyBrowser
             listBox.Font = new Font("Segoe UI", 10);
             listBox.IntegralHeight = false;
 
-            // 原始文件路径
             string dbPath = Path.Combine(fixedUserDataFolder, "EBWebView", "Default", "History");
-            // 临时文件路径
             string tempDbPath = Path.GetTempFileName(); 
 
             if (!File.Exists(dbPath))
@@ -142,11 +138,9 @@ namespace MyLovelyBrowser
             {
                 try
                 {
-                    // 1. 关键步骤：复制文件到临时目录！
-                    // 使用 FileShare.ReadWrite 允许我们在占用时复制
+                    // 复制文件到临时目录
                     File.Copy(dbPath, tempDbPath, true);
 
-                    // 2. 连接那个临时的副本
                     string connectionString = $"Data Source={tempDbPath}";
                     using (var connection = new SqliteConnection(connectionString))
                     {
@@ -167,15 +161,13 @@ namespace MyLovelyBrowser
                 }
                 catch (Exception ex)
                 {
-                    listBox.Items.Add("读取历史有点小问题: " + ex.Message);
+                    listBox.Items.Add("读取历史失败: " + ex.Message);
                 }
                 finally
                 {
-                    // 3. 用完即弃：清理临时文件
-                    // 这里加个 try catch，万一删不掉也没关系，系统会清理 temp 的
+                    // 清理临时文件
                     try 
                     { 
-                        // 需要先强制垃圾回收一下，确保 SQLite 连接完全释放，不然删文件会报错
                         GC.Collect(); 
                         GC.WaitForPendingFinalizers();
                         if (File.Exists(tempDbPath)) File.Delete(tempDbPath); 
@@ -184,7 +176,6 @@ namespace MyLovelyBrowser
                 }
             }
 
-            // 跳转逻辑
             listBox.DoubleClick += (s, e) =>
             {
                 if (listBox.SelectedItem != null)
@@ -204,7 +195,7 @@ namespace MyLovelyBrowser
             historyForm.ShowDialog(this);
         }
 
-        // --- 高级清理面板 (保持不变) ---
+        // --- 高级清理面板 (修复了报错) ---
         private void ShowClearDataDialog()
         {
             Form clearForm = new Form();
@@ -238,18 +229,39 @@ namespace MyLovelyBrowser
                 btnConfirm.Text = "清理中..."; btnConfirm.Enabled = false;
                 try {
                     CoreWebView2Profile profile = webView.CoreWebView2.Profile;
-                    if (chkAll.Checked) await profile.ClearBrowsingDataAsync(CoreWebView2BrowsingDataKinds.AllProfile);
-                    else {
-                        CoreWebView2BrowsingDataKinds flags = CoreWebView2BrowsingDataKinds.None;
+
+                    if (chkAll.Checked)
+                    {
+                        // 清除所有
+                        await profile.ClearBrowsingDataAsync(CoreWebView2BrowsingDataKinds.AllProfile);
+                    }
+                    else
+                    {
+                        // 修复点：初始化为 0，而不是 None
+                        CoreWebView2BrowsingDataKinds flags = (CoreWebView2BrowsingDataKinds)0;
+
                         if (chkHistory.Checked) flags |= CoreWebView2BrowsingDataKinds.BrowsingHistory;
                         if (chkCookies.Checked) flags |= CoreWebView2BrowsingDataKinds.Cookies;
-                        if (chkCache.Checked) flags |= (CoreWebView2BrowsingDataKinds.DiskCache | CoreWebView2BrowsingDataKinds.MemoryCache);
-                        if (flags != CoreWebView2BrowsingDataKinds.None) await profile.ClearBrowsingDataAsync(flags);
+                        
+                        // 修复点：只保留 DiskCache，去掉了 MemoryCache
+                        if (chkCache.Checked) flags |= CoreWebView2BrowsingDataKinds.DiskCache;
+
+                        if (flags != (CoreWebView2BrowsingDataKinds)0)
+                        {
+                            await profile.ClearBrowsingDataAsync(flags);
+                        }
                     }
-                    MessageBox.Show("清理完成！✨", "乐奈提示");
+
+                    MessageBox.Show("清理完成！✨", "提示");
                     clearForm.Close();
+                    
                     if (chkAll.Checked || chkHistory.Checked) NavigateToHome();
-                } catch (Exception ex) { MessageBox.Show("清理失败: " + ex.Message); clearForm.Close(); }
+                } 
+                catch (Exception ex) 
+                { 
+                    MessageBox.Show("清理失败: " + ex.Message); 
+                    clearForm.Close(); 
+                }
             };
             clearForm.Controls.Add(btnConfirm);
             clearForm.ShowDialog(this);
