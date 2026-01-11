@@ -1,0 +1,30 @@
+name: Build My Browser
+
+# 当主人推送代码(push)或者手动点击(workflow_dispatch)时触发
+on: [push, workflow_dispatch]
+
+jobs:
+  build:
+    runs-on: windows-latest  # 必须用 Windows 环境编译 WinForms 哦
+
+    steps:
+    - name: Checkout Code (拉取代码)
+      uses: actions/checkout@v4
+
+    - name: Setup .NET (安装 .NET 环境)
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: 8.0.x
+
+    - name: Restore Dependencies (下载 WebView2 包)
+      run: dotnet restore
+
+    - name: Build (开始编译)
+      # Release 模式，输出到 publish 文件夹
+      run: dotnet build -c Release -o ./publish
+
+    - name: Upload Artifact (上传成品)
+      uses: actions/upload-artifact@v4
+      with:
+        name: MyBrowser-App
+        path: ./publish
