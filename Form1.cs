@@ -13,12 +13,10 @@ namespace MyLovelyBrowser
         private WebView2 webView;
         private Panel topPanel;
         private TextBox txtUrl;
-        private Button btnGo, btnBack, btnForward, btnRefresh, btnHome, btnHistory;
+        private Button btnGo, btnBack, btnForward, btnRefresh, btnHome, btnHistory, btnClear;
 
         private const string BrowserName = "Ciallo浏览器";
-
-        // 定义一个固定的数据文件夹路径，不再随 exe 名字变动
-        // 这样数据就会稳定保存在程序旁边的 "UserData" 文件夹里
+        // 固定数据路径
         private readonly string fixedUserDataFolder = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "UserData");
 
         public Form1()
@@ -50,8 +48,15 @@ namespace MyLovelyBrowser
             topPanel.Controls.Add(btnHome);
 
             btnHistory = CreateButton("H", 170);
+            // 历史记录按钮
             btnHistory.Click += (s, e) => ShowHistoryWindow();
             topPanel.Controls.Add(btnHistory);
+
+            btnClear = CreateButton("🧹", 210);
+            btnClear.ForeColor = Color.Red;
+            // 清理按钮
+            btnClear.Click += (s, e) => ShowClearDataDialog(); 
+            topPanel.Controls.Add(btnClear);
 
             btnGo = new Button() { Text = "Go", Size = new Size(50, 30), Location = new Point(topPanel.Width - 65, 7), Anchor = AnchorStyles.Top | AnchorStyles.Right };
             btnGo.Click += (s, e) => NavigateToSite();
@@ -59,10 +64,10 @@ namespace MyLovelyBrowser
 
             // --- 3. 地址栏 ---
             txtUrl = new TextBox() { 
-                Location = new Point(215, 9), 
+                Location = new Point(255, 9), 
                 Height = 30, 
                 Font = new Font("Segoe UI", 10), 
-                Width = topPanel.Width - 215 - 80, 
+                Width = topPanel.Width - 255 - 80, 
                 Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right 
             };
             
@@ -85,18 +90,11 @@ namespace MyLovelyBrowser
 
         async void InitializeWebView()
         {
-            // 显式创建环境，指定数据文件夹
             var env = await CoreWebView2Environment.CreateAsync(null, fixedUserDataFolder);
-            
-            // 使用自定义环境初始化
             await webView.EnsureCoreWebView2Async(env);
 
-            webView.CoreWebView2.NewWindowRequested += (s, e) =>
-            {
-                e.Handled = true;
-                webView.CoreWebView2.Navigate(e.Uri);
-            };
-
+            webView.CoreWebView2.NewWindowRequested += (s, e) => { e.Handled = true; webView.CoreWebView2.Navigate(e.Uri); };
+            
             webView.SourceChanged += (s, e) =>
             {
                  if (!txtUrl.Focused) 
@@ -117,7 +115,7 @@ namespace MyLovelyBrowser
             NavigateToHome();
         }
 
-        // --- 历史记录 (读取固定路径) ---
+        // 修改：历史记录（复制副本模式）
         private void ShowHistoryWindow()
         {
             Form historyForm = new Form();
@@ -131,25 +129,29 @@ namespace MyLovelyBrowser
             listBox.Font = new Font("Segoe UI", 10);
             listBox.IntegralHeight = false;
 
-            // 路径结构固定为: UserData/EBWebView/Default/History
+            // 原始文件路径
             string dbPath = Path.Combine(fixedUserDataFolder, "EBWebView", "Default", "History");
+            // 临时文件路径
+            string tempDbPath = Path.GetTempFileName(); 
 
             if (!File.Exists(dbPath))
             {
-                // 如果还没生成文件，提示一下路径，方便调试
                 listBox.Items.Add($"暂无记录");
-                listBox.Items.Add($"历史文件期待路径: {dbPath}");
             }
             else
             {
                 try
                 {
-                    string connectionString = $"Data Source={dbPath};Mode=ReadOnly";
+                    // 1. 关键步骤：复制文件到临时目录！
+                    // 使用 FileShare.ReadWrite 允许我们在占用时复制
+                    File.Copy(dbPath, tempDbPath, true);
+
+                    // 2. 连接那个临时的副本
+                    string connectionString = $"Data Source={tempDbPath}";
                     using (var connection = new SqliteConnection(connectionString))
                     {
                         connection.Open();
                         var command = connection.CreateCommand();
-                        // 稍微优化了一下 SQL，只显示 http 开头的正常网页
                         command.CommandText = "SELECT title, url FROM urls WHERE url LIKE 'http%' ORDER BY last_visit_time DESC LIMIT 50";
                         using (var reader = command.ExecuteReader())
                         {
@@ -165,17 +167,31 @@ namespace MyLovelyBrowser
                 }
                 catch (Exception ex)
                 {
-                    listBox.Items.Add("读取失败: " + ex.Message);
+                    listBox.Items.Add("读取历史有点小问题: " + ex.Message);
+                }
+                finally
+                {
+                    // 3. 用完即弃：清理临时文件
+                    // 这里加个 try catch，万一删不掉也没关系，系统会清理 temp 的
+                    try 
+                    { 
+                        // 需要先强制垃圾回收一下，确保 SQLite 连接完全释放，不然删文件会报错
+                        GC.Collect(); 
+                        GC.WaitForPendingFinalizers();
+                        if (File.Exists(tempDbPath)) File.Delete(tempDbPath); 
+                    } 
+                    catch { }
                 }
             }
 
+            // 跳转逻辑
             listBox.DoubleClick += (s, e) =>
             {
                 if (listBox.SelectedItem != null)
                 {
                     string item = listBox.SelectedItem.ToString();
                     int lastSplit = item.LastIndexOf('|');
-                    if (lastSplit > 0 && lastSplit < item.Length - 1)
+                    if (lastSplit > 0)
                     {
                         string targetUrl = item.Substring(lastSplit + 1).Trim();
                         webView.CoreWebView2.Navigate(targetUrl);
@@ -188,7 +204,57 @@ namespace MyLovelyBrowser
             historyForm.ShowDialog(this);
         }
 
-        // --- 主页 (保持不变) ---
+        // --- 高级清理面板 (保持不变) ---
+        private void ShowClearDataDialog()
+        {
+            Form clearForm = new Form();
+            clearForm.Text = "清除浏览数据";
+            clearForm.Size = new Size(350, 300);
+            clearForm.StartPosition = FormStartPosition.CenterParent;
+            clearForm.FormBorderStyle = FormBorderStyle.FixedDialog;
+            clearForm.MaximizeBox = false;
+            clearForm.MinimizeBox = false;
+            try { clearForm.Icon = this.Icon; } catch { }
+
+            Label lblTitle = new Label() { Text = "请选择要清除的内容：", Location = new Point(20, 20), AutoSize = true, Font = new Font("Segoe UI", 10, FontStyle.Bold) };
+            clearForm.Controls.Add(lblTitle);
+
+            CheckBox chkHistory = new CheckBox() { Text = "浏览历史记录", Location = new Point(30, 60), AutoSize = true, Checked = true };
+            CheckBox chkCookies = new CheckBox() { Text = "Cookie 和其他网站数据", Location = new Point(30, 90), AutoSize = true, Checked = true };
+            CheckBox chkCache = new CheckBox() { Text = "缓存的图片和文件", Location = new Point(30, 120), AutoSize = true, Checked = true };
+            CheckBox chkAll = new CheckBox() { Text = "清除所有 (彻底重置)", Location = new Point(30, 160), AutoSize = true, Font = new Font("Segoe UI", 9, FontStyle.Bold), ForeColor = Color.Red };
+            
+            chkAll.CheckedChanged += (s, e) => {
+                bool isAll = chkAll.Checked;
+                chkHistory.Checked = isAll; chkCookies.Checked = isAll; chkCache.Checked = isAll;
+                chkHistory.Enabled = !isAll; chkCookies.Enabled = !isAll; chkCache.Enabled = !isAll;
+            };
+
+            clearForm.Controls.Add(chkHistory); clearForm.Controls.Add(chkCookies); clearForm.Controls.Add(chkCache); clearForm.Controls.Add(chkAll);
+
+            Button btnConfirm = new Button() { Text = "立即清除", Location = new Point(120, 210), Size = new Size(100, 35), BackColor = Color.MistyRose };
+            btnConfirm.Click += async (s, e) => 
+            {
+                btnConfirm.Text = "清理中..."; btnConfirm.Enabled = false;
+                try {
+                    CoreWebView2Profile profile = webView.CoreWebView2.Profile;
+                    if (chkAll.Checked) await profile.ClearBrowsingDataAsync(CoreWebView2BrowsingDataKinds.AllProfile);
+                    else {
+                        CoreWebView2BrowsingDataKinds flags = CoreWebView2BrowsingDataKinds.None;
+                        if (chkHistory.Checked) flags |= CoreWebView2BrowsingDataKinds.BrowsingHistory;
+                        if (chkCookies.Checked) flags |= CoreWebView2BrowsingDataKinds.Cookies;
+                        if (chkCache.Checked) flags |= (CoreWebView2BrowsingDataKinds.DiskCache | CoreWebView2BrowsingDataKinds.MemoryCache);
+                        if (flags != CoreWebView2BrowsingDataKinds.None) await profile.ClearBrowsingDataAsync(flags);
+                    }
+                    MessageBox.Show("清理完成！✨", "乐奈提示");
+                    clearForm.Close();
+                    if (chkAll.Checked || chkHistory.Checked) NavigateToHome();
+                } catch (Exception ex) { MessageBox.Show("清理失败: " + ex.Message); clearForm.Close(); }
+            };
+            clearForm.Controls.Add(btnConfirm);
+            clearForm.ShowDialog(this);
+        }
+
         void NavigateToHome()
         {
             string html = @"
@@ -217,10 +283,10 @@ namespace MyLovelyBrowser
                 </style>
             </head>
             <body>
-                <div class='logo'>(≧∇≦)ﾉ</div>
+                <div class='logo'>Ciallo ～(∠・ω< )⌒★</div>
                 <div class='search-container'>
                     <input type='text' id='inputBox' class='search-input' placeholder='Search Bing...' autocomplete='off' />
-                    <div class='hint-text'>输入网址请到上面的地址栏哦 ↑</div>
+                    <div class='hint-text'>输入网址请到最上面的地址栏哦 ↑</div>
                     <div id='list' class='suggestions'></div>
                 </div>
                 <script>
@@ -252,10 +318,7 @@ namespace MyLovelyBrowser
         void NavigateToSite()
         {
             string input = txtUrl.Text.Trim();
-            if (string.IsNullOrEmpty(input) || input == "🏠 主页" || input.ToLower() == "about:blank") 
-            {
-                NavigateToHome(); return;
-            }
+            if (string.IsNullOrEmpty(input) || input == "🏠 主页" || input.ToLower() == "about:blank") { NavigateToHome(); return; }
             string targetUrl = "";
             if (input.Contains(" ") || (!input.Contains(".") && !input.StartsWith("http"))) targetUrl = "https://www.bing.com/search?q=" + System.Web.HttpUtility.UrlEncode(input);
             else { targetUrl = input; if (!targetUrl.StartsWith("http://") && !targetUrl.StartsWith("https://")) targetUrl = "https://" + targetUrl; }
