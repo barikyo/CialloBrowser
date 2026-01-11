@@ -6,7 +6,7 @@ using Microsoft.Web.WebView2.Core;
 using Microsoft.Web.WebView2.WinForms;
 using Microsoft.Data.Sqlite;
 
-namespace MyLovelyBrowser
+namespace CialloBrowser
 {
     public class Form1 : Form
     {
@@ -18,13 +18,28 @@ namespace MyLovelyBrowser
         private const string BrowserName = "Ciallo浏览器";
         // 固定数据路径
         private readonly string fixedUserDataFolder = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "UserData");
-
         public Form1()
         {
             this.Text = $"{BrowserName} - 初始化中...";
             this.Size = new Size(1200, 800);
             this.StartPosition = FormStartPosition.CenterScreen;
-            try { this.Icon = new Icon("logo.ico"); } catch { }
+            
+            // 从嵌入资源中读取图标
+            try 
+            {
+                // 获取当前的程序集
+                var assembly = System.Reflection.Assembly.GetExecutingAssembly();
+                var resourceName = "CialloBrowser.logo.ico"; 
+                
+                using (var stream = assembly.GetManifestResourceStream(resourceName))
+                {
+                    if (stream != null)
+                    {
+                        this.Icon = new Icon(stream);
+                    }
+                }
+            } 
+            catch { }
 
             // --- 1. 顶部面板 ---
             topPanel = new Panel() { Dock = DockStyle.Top, Height = 45, Padding = new Padding(5), BackColor = Color.WhiteSmoke };
@@ -338,3 +353,4 @@ namespace MyLovelyBrowser
         }
     }
 }
+
