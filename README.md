@@ -5,7 +5,8 @@
 ![Platform](https://img.shields.io/badge/platform-Windows-0078D6?style=flat-square)
 ![.NET](https://img.shields.io/badge/.NET-8.0-512BD4?style=flat-square)
 
-一个基于 **Microsoft WebView2 (Chromium)** 内核，使用 **C# WinForms** 打造的轻量级、现代化、极简风格浏览器。
+一个基于 **Microsoft WebView2 (Chromium)** 内核，使用 **C# WinForms** 打造的轻量级、现代化、极简风格浏览器。<br>
+支持Windows10及更新系统。（支持.NET8.0 Runtime的系统可使用）
 
 > "简约而不简单，为您提供最纯粹的浏览体验。"
 
