@@ -3,10 +3,12 @@ using System.Drawing;
 using System.Windows.Forms;
 using System.IO;
 using System.Runtime.InteropServices;
-using Microsoft.Win32; // 用于监听系统设置
+using Microsoft.Win32;
 using Microsoft.Web.WebView2.Core;
 using Microsoft.Web.WebView2.WinForms;
 using Microsoft.Data.Sqlite;
+using System.Collections.Generic; // Framework 需要引用
+using System.Threading.Tasks;     // 异步
 
 namespace CialloBrowser
 {
@@ -15,7 +17,6 @@ namespace CialloBrowser
         private WebView2 webView;
         private Panel topPanel;
         private TextBox txtUrl;
-        // 按钮定义
         private Button btnGo, btnBack, btnForward, btnRefresh, btnHome, btnHistory, btnClear;
 
         private const string BrowserName = "Ciallo浏览器";
@@ -50,17 +51,16 @@ namespace CialloBrowser
             this.Controls.Add(topPanel);
 
             // --- 2. 按钮群 ---
-            // 注意：我们用 CreateButton 统一创建，方便管理样式
             btnBack = CreateButton("←", 10);
-            btnBack.Click += (s, e) => { if (webView.CanGoBack) webView.GoBack(); };
+            btnBack.Click += (s, e) => { if (webView != null && webView.CoreWebView2 != null && webView.CanGoBack) webView.GoBack(); };
             topPanel.Controls.Add(btnBack);
 
             btnForward = CreateButton("→", 50);
-            btnForward.Click += (s, e) => { if (webView.CanGoForward) webView.GoForward(); };
+            btnForward.Click += (s, e) => { if (webView != null && webView.CoreWebView2 != null && webView.CanGoForward) webView.GoForward(); };
             topPanel.Controls.Add(btnForward);
 
             btnRefresh = CreateButton("↻", 90);
-            btnRefresh.Click += (s, e) => webView.Reload();
+            btnRefresh.Click += (s, e) => { if(webView != null && webView.CoreWebView2 != null) webView.Reload(); };
             topPanel.Controls.Add(btnRefresh);
 
             btnHome = CreateButton("🏠", 130);
@@ -80,7 +80,7 @@ namespace CialloBrowser
                 Size = new Size(50, 30), 
                 Location = new Point(topPanel.Width - 65, 7), 
                 Anchor = AnchorStyles.Top | AnchorStyles.Right,
-                FlatStyle = FlatStyle.Flat, // 必须是 Flat 才能变色
+                FlatStyle = FlatStyle.Flat,
                 FlatAppearance = { BorderSize = 0 }
             };
             btnGo.Click += (s, e) => NavigateToSite();
@@ -93,7 +93,7 @@ namespace CialloBrowser
                 Font = new Font("Segoe UI", 10), 
                 Width = topPanel.Width - 255 - 80, 
                 Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right,
-                BorderStyle = BorderStyle.FixedSingle // 扁平风格更好看
+                BorderStyle = BorderStyle.FixedSingle
             };
             
             txtUrl.KeyDown += (s, e) => { if (e.KeyCode == Keys.Enter) NavigateToSite(); };
@@ -105,36 +105,29 @@ namespace CialloBrowser
             this.Controls.Add(webView);
             webView.BringToFront();
 
-            // 🔥🔥🔥 核心：初始化时先判断一次颜色 🔥🔥🔥
+            // 监听颜色变化
             ApplyThemeBasedOnSystem();
-
-            // 🔥🔥🔥 核心：监听系统颜色改变事件 🔥🔥🔥
             SystemEvents.UserPreferenceChanged += (s, e) => 
             {
-                // 当用户改变了系统设置（比如切了深色模式）
                 if (e.Category == UserPreferenceCategory.General)
                 {
-                    // 必须在 UI 线程执行
-                    this.Invoke(new Action(() => ApplyThemeBasedOnSystem()));
+                    // Framework 版本这里最好加个 Invoke 检查，防止线程冲突
+                    if (this.IsHandleCreated) this.Invoke(new Action(() => ApplyThemeBasedOnSystem()));
                 }
             };
 
             InitializeWebView();
         }
 
-        // --- 创建按钮的辅助函数 ---
         private Button CreateButton(string text, int x)
         {
             return new Button() { 
-                Text = text, 
-                Location = new Point(x, 7), 
-                Size = new Size(35, 30),
-                FlatStyle = FlatStyle.Flat, // 关键：设为 Flat 才能随意改背景色
-                FlatAppearance = { BorderSize = 0 }
+                Text = text, Location = new Point(x, 7), Size = new Size(35, 30),
+                FlatStyle = FlatStyle.Flat, FlatAppearance = { BorderSize = 0 }
             };
         }
 
-        // --- 🔥🔥🔥 变色龙核心逻辑 🔥🔥🔥 ---
+        // --- 深色模式逻辑 ---
         [DllImport("dwmapi.dll")]
         private static extern int DwmSetWindowAttribute(IntPtr hwnd, int attr, ref int attrValue, int attrSize);
         private const int DWMWA_USE_IMMERSIVE_DARK_MODE = 20;
@@ -143,105 +136,58 @@ namespace CialloBrowser
         {
             try
             {
-                // 1. 读取注册表，判断当前系统是不是深色模式
-                // 0 = Dark (深色), 1 = Light (浅色)
                 bool isDarkMode = false;
                 using (var key = Registry.CurrentUser.OpenSubKey(@"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize"))
                 {
-                    if (key != null)
-                    {
-                        var val = key.GetValue("AppsUseLightTheme");
-                        if (val is int i && i == 0) isDarkMode = true;
-                    }
+                    if (key != null) { var val = key.GetValue("AppsUseLightTheme"); if (val is int i && i == 0) isDarkMode = true; }
                 }
 
-                // 2. 设置 Windows 窗口标题栏颜色 (调用 DWM API)
                 int useImmersiveDarkMode = isDarkMode ? 1 : 0;
                 DwmSetWindowAttribute(this.Handle, DWMWA_USE_IMMERSIVE_DARK_MODE, ref useImmersiveDarkMode, sizeof(int));
 
-                // 3. 根据模式，给界面“刷漆”
                 if (isDarkMode)
                 {
-                    // ⚫️ 深色模式配色
-                    this.BackColor = Color.FromArgb(32, 32, 32);       // 窗体底色
-                    topPanel.BackColor = Color.FromArgb(45, 45, 48);   // 顶部工具栏底色
-                    
-                    // 地址栏变黑
+                    this.BackColor = Color.FromArgb(32, 32, 32);     
+                    topPanel.BackColor = Color.FromArgb(45, 45, 48); 
                     txtUrl.BackColor = Color.FromArgb(30, 30, 30);
                     txtUrl.ForeColor = Color.White;
-
-                    // 按钮变黑
-                    foreach(Control c in topPanel.Controls) 
-                    { 
-                        if(c is Button btn) 
-                        { 
-                            btn.BackColor = Color.FromArgb(60, 60, 60); // 按钮背景
-                            btn.ForeColor = Color.White;              // 按钮文字
-                            btn.FlatAppearance.MouseOverBackColor = Color.FromArgb(80, 80, 80); // 鼠标悬停
-                        } 
-                    }
-                    // 特殊处理：清除按钮保持红色系，但稍微亮一点
+                    foreach(Control c in topPanel.Controls) { if(c is Button btn) { btn.BackColor = Color.FromArgb(60, 60, 60); btn.ForeColor = Color.White; } }
                     btnClear.ForeColor = Color.FromArgb(255, 100, 100); 
                 }
-                else
+                else 
                 {
-                    // ⚪️ 浅色模式配色 (恢复经典)
-                    this.BackColor = SystemColors.Control; // 恢复系统默认灰
-                    topPanel.BackColor = Color.WhiteSmoke; // 工具栏浅灰
-                    
-                    // 地址栏变白
+                    this.BackColor = SystemColors.Control;
+                    topPanel.BackColor = Color.WhiteSmoke;
                     txtUrl.BackColor = Color.White;
                     txtUrl.ForeColor = Color.Black;
-
-                    // 按钮恢复透明/浅色
-                    foreach(Control c in topPanel.Controls) 
-                    { 
-                        if(c is Button btn) 
-                        { 
-                            btn.BackColor = Color.Transparent; // 恢复透明感
-                            btn.ForeColor = Color.Black;       // 黑色文字
-                            btn.FlatAppearance.MouseOverBackColor = Color.LightGray; // 鼠标悬停变灰
-                        } 
-                    }
-                    // 清除按钮恢复正红
+                    foreach(Control c in topPanel.Controls) { if(c is Button btn) { btn.BackColor = Color.Transparent; btn.ForeColor = Color.Black; } }
                     btnClear.ForeColor = Color.Red;
                 }
-                
-                // 强制刷新一下界面，防止有残影
                 topPanel.Invalidate();
             }
-            catch 
-            {
-                // 如果系统不支持或者读注册表失败，就保持默认，不报错
-            }
+            catch { }
         }
 
         async void InitializeWebView()
         {
-            var env = await CoreWebView2Environment.CreateAsync(null, fixedUserDataFolder);
-            await webView.EnsureCoreWebView2Async(env);
-            webView.CoreWebView2.NewWindowRequested += (s, e) => { e.Handled = true; webView.CoreWebView2.Navigate(e.Uri); };
-            
-            webView.SourceChanged += (s, e) =>
+            try
             {
-                 if (!txtUrl.Focused) 
-                 {
-                     string src = webView.Source.ToString();
-                     if (src.StartsWith("data:")) txtUrl.Text = "🏠 主页"; 
-                     else txtUrl.Text = src;
-                 }
-            };
-            
-            webView.CoreWebView2.DocumentTitleChanged += (s, e) =>
+                var env = await CoreWebView2Environment.CreateAsync(null, fixedUserDataFolder);
+                await webView.EnsureCoreWebView2Async(env);
+                
+                webView.CoreWebView2.NewWindowRequested += (s, e) => { e.Handled = true; webView.CoreWebView2.Navigate(e.Uri); };
+                webView.SourceChanged += (s, e) => { if (!txtUrl.Focused) { string src = webView.Source.ToString(); if (src.StartsWith("data:")) txtUrl.Text = "🏠 主页"; else txtUrl.Text = src; } };
+                webView.CoreWebView2.DocumentTitleChanged += (s, e) => { string t = webView.CoreWebView2.DocumentTitle; this.Text = (string.IsNullOrEmpty(t) || t == "about:blank") ? BrowserName : $"{t} - {BrowserName}"; };
+                
+                NavigateToHome();
+            }
+            catch (Exception ex)
             {
-                string pageTitle = webView.CoreWebView2.DocumentTitle;
-                if (string.IsNullOrEmpty(pageTitle) || pageTitle == "about:blank") this.Text = BrowserName;
-                else this.Text = $"{pageTitle} - {BrowserName}";
-            };
-            NavigateToHome();
+                MessageBox.Show("呜...WebView2 初始化失败！请确保电脑上安装了 WebView2 Runtime喵。\n错误: " + ex.Message);
+            }
         }
 
-        // --- 核心导航 (无警告版) ---
+        // --- 核心导航 ---
         void NavigateToSite()
         {
             string input = txtUrl.Text.Trim();
@@ -263,32 +209,21 @@ namespace CialloBrowser
                 if (looksLikeSearch) webView.CoreWebView2.Navigate("https://www.bing.com/search?q=" + System.Web.HttpUtility.UrlEncode(input));
                 else webView.CoreWebView2.Navigate(targetUrl);
             }
-            catch (System.ArgumentException)
-            {
-                try { webView.CoreWebView2.Navigate("https://www.bing.com/search?q=" + System.Web.HttpUtility.UrlEncode(input)); } catch { }
-            }
-            catch (Exception) 
-            {
-                try { webView.CoreWebView2.Navigate("https://www.bing.com/search?q=" + System.Web.HttpUtility.UrlEncode(input)); } catch { }
-            }
+            catch (ArgumentException) { try { webView.CoreWebView2.Navigate("https://www.bing.com/search?q=" + System.Web.HttpUtility.UrlEncode(input)); } catch { } }
+            catch (Exception) { try { webView.CoreWebView2.Navigate("https://www.bing.com/search?q=" + System.Web.HttpUtility.UrlEncode(input)); } catch { } }
         }
 
-        // --- 历史记录 (副本模式) ---
+        // --- 历史记录 ---
         private void ShowHistoryWindow()
         {
-            Form historyForm = new Form();
-            historyForm.Text = "历史记录";
-            historyForm.Size = new Size(800, 500);
-            historyForm.StartPosition = FormStartPosition.CenterParent;
+            Form historyForm = new Form(); historyForm.Text = "历史记录"; historyForm.Size = new Size(800, 500); historyForm.StartPosition = FormStartPosition.CenterParent;
             try { historyForm.Icon = this.Icon; } catch { }
-            ListBox listBox = new ListBox();
-            listBox.Dock = DockStyle.Fill;
-            listBox.Font = new Font("Segoe UI", 10);
-            listBox.IntegralHeight = false;
+            ListBox listBox = new ListBox(); listBox.Dock = DockStyle.Fill; listBox.Font = new Font("Segoe UI", 10); listBox.IntegralHeight = false;
+            
             string dbPath = Path.Combine(fixedUserDataFolder, "EBWebView", "Default", "History");
             string tempDbPath = Path.GetTempFileName(); 
 
-            if (!File.Exists(dbPath)) { listBox.Items.Add($"暂无记录"); }
+            if (!File.Exists(dbPath)) { listBox.Items.Add($"暂无记录喵"); }
             else {
                 try {
                     File.Copy(dbPath, tempDbPath, true);
@@ -304,23 +239,17 @@ namespace CialloBrowser
                             }
                         }
                     }
-                } catch (Exception ex) { listBox.Items.Add("读取历史失败: " + ex.Message); }
+                } catch (Exception ex) { listBox.Items.Add("读取失败: " + ex.Message); }
                 finally { try { GC.Collect(); GC.WaitForPendingFinalizers(); if (File.Exists(tempDbPath)) File.Delete(tempDbPath); } catch { } }
             }
-            listBox.DoubleClick += (s, e) => {
-                if (listBox.SelectedItem != null) {
-                    string item = listBox.SelectedItem.ToString(); int lastSplit = item.LastIndexOf('|');
-                    if (lastSplit > 0) webView.CoreWebView2.Navigate(item.Substring(lastSplit + 1).Trim());
-                    historyForm.Close();
-                }
-            };
+            listBox.DoubleClick += (s, e) => { if (listBox.SelectedItem != null) { string item = listBox.SelectedItem.ToString(); int lastSplit = item.LastIndexOf('|'); if (lastSplit > 0) webView.CoreWebView2.Navigate(item.Substring(lastSplit + 1).Trim()); historyForm.Close(); } };
             historyForm.Controls.Add(listBox); historyForm.ShowDialog(this);
         }
 
-        // --- 高级清理面板 (无警告版) ---
+        // --- 清理面板 ---
         private void ShowClearDataDialog()
         {
-            Form clearForm = new Form(); clearForm.Text = "清除浏览数据"; clearForm.Size = new Size(350, 300);
+            Form clearForm = new Form(); clearForm.Text = "清除浏览数据喵"; clearForm.Size = new Size(350, 300);
             clearForm.StartPosition = FormStartPosition.CenterParent; clearForm.FormBorderStyle = FormBorderStyle.FixedDialog;
             clearForm.MaximizeBox = false; clearForm.MinimizeBox = false; try { clearForm.Icon = this.Icon; } catch { }
             Label lblTitle = new Label() { Text = "请选择要清除的内容：", Location = new Point(20, 20), AutoSize = true, Font = new Font("Segoe UI", 10, FontStyle.Bold) };
@@ -331,7 +260,7 @@ namespace CialloBrowser
             CheckBox chkAll = new CheckBox() { Text = "清除所有 (彻底重置)", Location = new Point(30, 160), AutoSize = true, Font = new Font("Segoe UI", 9, FontStyle.Bold), ForeColor = Color.Red };
             chkAll.CheckedChanged += (s, e) => { bool isAll = chkAll.Checked; chkHistory.Checked = isAll; chkCookies.Checked = isAll; chkCache.Checked = isAll; chkHistory.Enabled = !isAll; chkCookies.Enabled = !isAll; chkCache.Enabled = !isAll; };
             clearForm.Controls.Add(chkHistory); clearForm.Controls.Add(chkCookies); clearForm.Controls.Add(chkCache); clearForm.Controls.Add(chkAll);
-            Button btnConfirm = new Button() { Text = "立即清除", Location = new Point(120, 210), Size = new Size(100, 35), BackColor = Color.MistyRose };
+            Button btnConfirm = new Button() { Text = "立即清除！", Location = new Point(120, 210), Size = new Size(100, 35), BackColor = Color.MistyRose };
             btnConfirm.Click += async (s, e) => {
                 btnConfirm.Text = "清理中..."; btnConfirm.Enabled = false;
                 try {
@@ -381,7 +310,7 @@ namespace CialloBrowser
                 <div class='logo'>Ciallo ～(∠・ω< )⌒★</div>
                 <div class='search-container'>
                     <input type='text' id='inputBox' class='search-input' placeholder='Search Bing...' autocomplete='off' />
-                    <div class='hint-text'>输入网址请到最上面的地址栏哦 ↑</div>
+                    <div class='hint-text'>输入网址请到最上面的地址栏喵 ↑</div>
                     <div id='list' class='suggestions'></div>
                 </div>
                 <script>
