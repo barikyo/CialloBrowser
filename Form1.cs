@@ -2,8 +2,8 @@ using System;
 using System.Drawing;
 using System.Windows.Forms;
 using System.IO;
-using System.Runtime.InteropServices; // ✨ 新增：用于调用 Windows API
-using Microsoft.Win32;                // ✨ 新增：用于监听系统颜色设置变化
+using System.Runtime.InteropServices; // 新增：用于调用 Windows API
+using Microsoft.Win32;                // 新增：用于监听系统颜色设置变化
 using Microsoft.Web.WebView2.Core;
 using Microsoft.Web.WebView2.WinForms;
 using Microsoft.Data.Sqlite;
@@ -337,8 +337,7 @@ namespace CialloBrowser
             </html>";
             webView.NavigateToString(html);
         }
-        // --- 核心导航 (修复了 view-source 的 Bug) ---
-        // --- 核心导航 (兼容所有协议防崩) ---
+        // --- 核心导航 (兼容所有协议、防崩、无警告) ---
         void NavigateToSite()
         {
             string input = txtUrl.Text.Trim();
@@ -350,7 +349,7 @@ namespace CialloBrowser
                 return;
             }
 
-            // 2. 特殊协议处理：view-source 必崩，必须先去掉
+            // 2. 特殊协议处理
             if (input.StartsWith("view-source:", StringComparison.OrdinalIgnoreCase))
             {
                 input = input.Substring("view-source:".Length);
@@ -359,53 +358,48 @@ namespace CialloBrowser
             string targetUrl = "";
             bool looksLikeSearch = false;
 
-            // 3. 智能判断：是网址还是搜索词
-            // 规则：如果有空格，或者没有点号(.)且没有协议头(:/)，就认为是搜索词
+            // 3. 智能判断
             if (input.Contains(" ") || (!input.Contains(".") && !input.Contains(":/")))
             {
                 looksLikeSearch = true;
             }
             else
             {
-                // 认为是网址
                 targetUrl = input;
-                // 如果没有协议头 (比如输入 bilibili.com)，默认补上 https://
-                // 注意：如果用户输入了 orpheus://xxx，这里不会乱加，会保留原样
+                // 正则判断是否缺协议头
                 if (!System.Text.RegularExpressions.Regex.IsMatch(input, @"^[a-zA-Z0-9\+\.\-]+://"))
                 {
                     targetUrl = "https://" + targetUrl;
                 }
             }
 
-            // 4. 防死机
+            // 4. 执行导航 (防崩)
             try
             {
                 if (looksLikeSearch)
                 {
-                    // 肯定是搜索词，直接搜
                     string searchUrl = "https://www.bing.com/search?q=" + System.Web.HttpUtility.UrlEncode(input);
                     webView.CoreWebView2.Navigate(searchUrl);
                 }
                 else
                 {
-                    // 看起来像网址（包括 http, ftp, 甚至 xxx:https）
-                    // 尝试去访问
                     webView.CoreWebView2.Navigate(targetUrl);
                 }
             }
             catch (System.ArgumentException)
             {
-                // 捕获崩溃
+                // 捕获无效格式错误 (如 xxx:https://)
                 string fallbackUrl = "https://www.bing.com/search?q=" + System.Web.HttpUtility.UrlEncode(input);
                 try { webView.CoreWebView2.Navigate(fallbackUrl); } catch { }
             }
-            catch (Exception ex)
+            // 👇👇👇 修改了这里：去掉了 ex 变量，编译器就不唠叨啦！
+            catch (Exception) 
             {
                 // 捕获其他未知错误
-                // 也是转去搜索
                 string fallbackUrl = "https://www.bing.com/search?q=" + System.Web.HttpUtility.UrlEncode(input);
                 try { webView.CoreWebView2.Navigate(fallbackUrl); } catch { }
             }
         }
     }
 }
+
