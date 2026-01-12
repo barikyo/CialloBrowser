@@ -2,6 +2,8 @@ using System;
 using System.Drawing;
 using System.Windows.Forms;
 using System.IO;
+using System.Runtime.InteropServices; // ✨ 新增：用于调用 Windows API
+using Microsoft.Win32;                // ✨ 新增：用于监听系统颜色设置变化
 using Microsoft.Web.WebView2.Core;
 using Microsoft.Web.WebView2.WinForms;
 using Microsoft.Data.Sqlite;
@@ -16,30 +18,38 @@ namespace CialloBrowser
         private Button btnGo, btnBack, btnForward, btnRefresh, btnHome, btnHistory, btnClear;
 
         private const string BrowserName = "Ciallo浏览器";
-        // 固定数据路径
         private readonly string fixedUserDataFolder = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "UserData");
+
         public Form1()
         {
             this.Text = $"{BrowserName} - 初始化中...";
             this.Size = new Size(1200, 800);
             this.StartPosition = FormStartPosition.CenterScreen;
-            
-            // 从嵌入资源中读取图标
-            try 
+            try { this.Icon = new Icon("logo.ico"); } catch 
             {
-                // 获取当前的程序集
-                var assembly = System.Reflection.Assembly.GetExecutingAssembly();
-                var resourceName = "CialloBrowser.logo.ico"; 
-                
-                using (var stream = assembly.GetManifestResourceStream(resourceName))
-                {
-                    if (stream != null)
+                // 如果是单文件嵌入模式，尝试从资源读取
+                try {
+                    var assembly = System.Reflection.Assembly.GetExecutingAssembly();
+                    // 注意：这里的资源名取决于您的命名空间，默认是 MyLovelyBrowser.logo.ico
+                    // 如果图标不显示，可能需要检查资源名
+                    using (var stream = assembly.GetManifestResourceStream("MyLovelyBrowser.logo.ico"))
                     {
-                        this.Icon = new Icon(stream);
+                        if(stream != null) this.Icon = new Icon(stream);
                     }
+                } catch {}
+            }
+
+            // 🔥🔥🔥 1. 初始化时应用深色模式 🔥🔥🔥
+            UpdateTitleBarTheme();
+
+            // 🔥🔥🔥 2. 监听系统颜色变化事件 🔥🔥🔥
+            SystemEvents.UserPreferenceChanged += (s, e) => 
+            {
+                if (e.Category == UserPreferenceCategory.General)
+                {
+                    UpdateTitleBarTheme();
                 }
-            } 
-            catch { }
+            };
 
             // --- 1. 顶部面板 ---
             topPanel = new Panel() { Dock = DockStyle.Top, Height = 45, Padding = new Padding(5), BackColor = Color.WhiteSmoke };
@@ -96,6 +106,71 @@ namespace CialloBrowser
             InitializeWebView();
         }
 
+        // ---深色标题栏区---
+
+        [DllImport("dwmapi.dll")]
+        private static extern int DwmSetWindowAttribute(IntPtr hwnd, int attr, ref int attrValue, int attrSize);
+
+        private const int DWMWA_USE_IMMERSIVE_DARK_MODE_BEFORE_20H1 = 19;
+        private const int DWMWA_USE_IMMERSIVE_DARK_MODE = 20;
+
+        private void UpdateTitleBarTheme()
+        {
+            try
+            {
+                // 1. 判断系统是否是深色模式
+                // 读取注册表: HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize
+                // AppsUseLightTheme = 0 (深色), 1 (浅色)
+                bool isDarkMode = false;
+                using (var key = Registry.CurrentUser.OpenSubKey(@"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize"))
+                {
+                    if (key != null)
+                    {
+                        var val = key.GetValue("AppsUseLightTheme");
+                        if (val is int i && i == 0)
+                        {
+                            isDarkMode = true;
+                        }
+                    }
+                }
+
+                // 2. 调用 API 设置标题栏颜色
+                int attribute = DWMWA_USE_IMMERSIVE_DARK_MODE;
+                int useImmersiveDarkMode = isDarkMode ? 1 : 0;
+
+                if (DwmSetWindowAttribute(this.Handle, attribute, ref useImmersiveDarkMode, sizeof(int)) != 0)
+                {
+                    // 如果失败，尝试旧版本的 API (针对 Win10 早期版本)
+                    DwmSetWindowAttribute(this.Handle, DWMWA_USE_IMMERSIVE_DARK_MODE_BEFORE_20H1, ref useImmersiveDarkMode, sizeof(int));
+                }
+
+                // 3. 顺便改一下工具栏颜色，让整体更协调
+                if (isDarkMode)
+                {
+                    topPanel.BackColor = Color.FromArgb(45, 45, 48); // 深灰背景
+                    txtUrl.BackColor = Color.FromArgb(30, 30, 30);   // 输入框深黑
+                    txtUrl.ForeColor = Color.White;                // 文字变白
+                    foreach(Control c in topPanel.Controls) { if(c is Button) { c.BackColor = Color.FromArgb(60, 60, 60); c.ForeColor = Color.White; } }
+                    // 特殊处理清除按钮的红色
+                    btnClear.ForeColor = Color.FromArgb(255, 100, 100); 
+                }
+                else
+                {
+                    topPanel.BackColor = Color.WhiteSmoke;
+                    txtUrl.BackColor = Color.White;
+                    txtUrl.ForeColor = Color.Black;
+                    foreach(Control c in topPanel.Controls) { if(c is Button) { c.BackColor = Control.DefaultBackColor; c.ForeColor = Color.Black; } }
+                    btnClear.ForeColor = Color.Red;
+                }
+            }
+            catch 
+            {
+                // 如果出错（比如不是Win10/11），就保持默认，不让程序崩掉
+            }
+        }
+
+        // --- 以下是常规功能 ---
+
         private Button CreateButton(string text, int x)
         {
             return new Button() { Text = text, Location = new Point(x, 7), Size = new Size(35, 30) };
@@ -105,7 +180,6 @@ namespace CialloBrowser
         {
             var env = await CoreWebView2Environment.CreateAsync(null, fixedUserDataFolder);
             await webView.EnsureCoreWebView2Async(env);
-
             webView.CoreWebView2.NewWindowRequested += (s, e) => { e.Handled = true; webView.CoreWebView2.Navigate(e.Uri); };
             
             webView.SourceChanged += (s, e) =>
@@ -124,11 +198,10 @@ namespace CialloBrowser
                 if (string.IsNullOrEmpty(pageTitle) || pageTitle == "about:blank") this.Text = BrowserName;
                 else this.Text = $"{pageTitle} - {BrowserName}";
             };
-
             NavigateToHome();
         }
 
-        // --- 历史记录（复制副本模式） ---
+        // --- 历史记录 (防死机副本模式) ---
         private void ShowHistoryWindow()
         {
             Form historyForm = new Form();
@@ -136,150 +209,73 @@ namespace CialloBrowser
             historyForm.Size = new Size(800, 500);
             historyForm.StartPosition = FormStartPosition.CenterParent;
             try { historyForm.Icon = this.Icon; } catch { }
-
             ListBox listBox = new ListBox();
             listBox.Dock = DockStyle.Fill;
             listBox.Font = new Font("Segoe UI", 10);
             listBox.IntegralHeight = false;
-
             string dbPath = Path.Combine(fixedUserDataFolder, "EBWebView", "Default", "History");
             string tempDbPath = Path.GetTempFileName(); 
 
-            if (!File.Exists(dbPath))
-            {
-                listBox.Items.Add($"暂无记录");
-            }
-            else
-            {
-                try
-                {
-                    // 复制文件到临时目录
+            if (!File.Exists(dbPath)) { listBox.Items.Add($"暂无记录"); }
+            else {
+                try {
                     File.Copy(dbPath, tempDbPath, true);
-
                     string connectionString = $"Data Source={tempDbPath}";
-                    using (var connection = new SqliteConnection(connectionString))
-                    {
+                    using (var connection = new SqliteConnection(connectionString)) {
                         connection.Open();
                         var command = connection.CreateCommand();
                         command.CommandText = "SELECT title, url FROM urls WHERE url LIKE 'http%' ORDER BY last_visit_time DESC LIMIT 50";
-                        using (var reader = command.ExecuteReader())
-                        {
-                            while (reader.Read())
-                            {
-                                string title = reader.GetString(0);
-                                string url = reader.GetString(1);
-                                if(string.IsNullOrEmpty(title)) title = "无标题";
-                                listBox.Items.Add($"{title} | {url}");
+                        using (var reader = command.ExecuteReader()) {
+                            while (reader.Read()) {
+                                string title = reader.GetString(0); string url = reader.GetString(1);
+                                if(string.IsNullOrEmpty(title)) title = "无标题"; listBox.Items.Add($"{title} | {url}");
                             }
                         }
                     }
-                }
-                catch (Exception ex)
-                {
-                    listBox.Items.Add("读取历史失败: " + ex.Message);
-                }
-                finally
-                {
-                    // 清理临时文件
-                    try 
-                    { 
-                        GC.Collect(); 
-                        GC.WaitForPendingFinalizers();
-                        if (File.Exists(tempDbPath)) File.Delete(tempDbPath); 
-                    } 
-                    catch { }
-                }
+                } catch (Exception ex) { listBox.Items.Add("读取历史失败: " + ex.Message); }
+                finally { try { GC.Collect(); GC.WaitForPendingFinalizers(); if (File.Exists(tempDbPath)) File.Delete(tempDbPath); } catch { } }
             }
-
-            listBox.DoubleClick += (s, e) =>
-            {
-                if (listBox.SelectedItem != null)
-                {
-                    string item = listBox.SelectedItem.ToString();
-                    int lastSplit = item.LastIndexOf('|');
-                    if (lastSplit > 0)
-                    {
-                        string targetUrl = item.Substring(lastSplit + 1).Trim();
-                        webView.CoreWebView2.Navigate(targetUrl);
-                        historyForm.Close();
-                    }
+            listBox.DoubleClick += (s, e) => {
+                if (listBox.SelectedItem != null) {
+                    string item = listBox.SelectedItem.ToString(); int lastSplit = item.LastIndexOf('|');
+                    if (lastSplit > 0) webView.CoreWebView2.Navigate(item.Substring(lastSplit + 1).Trim());
+                    historyForm.Close();
                 }
             };
-
-            historyForm.Controls.Add(listBox);
-            historyForm.ShowDialog(this);
+            historyForm.Controls.Add(listBox); historyForm.ShowDialog(this);
         }
 
-        // --- 高级清理面板 (修复了报错) ---
+        // --- 高级清理面板 (修复版) ---
         private void ShowClearDataDialog()
         {
-            Form clearForm = new Form();
-            clearForm.Text = "清除浏览数据";
-            clearForm.Size = new Size(350, 300);
-            clearForm.StartPosition = FormStartPosition.CenterParent;
-            clearForm.FormBorderStyle = FormBorderStyle.FixedDialog;
-            clearForm.MaximizeBox = false;
-            clearForm.MinimizeBox = false;
-            try { clearForm.Icon = this.Icon; } catch { }
-
+            Form clearForm = new Form(); clearForm.Text = "清除浏览数据"; clearForm.Size = new Size(350, 300);
+            clearForm.StartPosition = FormStartPosition.CenterParent; clearForm.FormBorderStyle = FormBorderStyle.FixedDialog;
+            clearForm.MaximizeBox = false; clearForm.MinimizeBox = false; try { clearForm.Icon = this.Icon; } catch { }
             Label lblTitle = new Label() { Text = "请选择要清除的内容：", Location = new Point(20, 20), AutoSize = true, Font = new Font("Segoe UI", 10, FontStyle.Bold) };
             clearForm.Controls.Add(lblTitle);
-
             CheckBox chkHistory = new CheckBox() { Text = "浏览历史记录", Location = new Point(30, 60), AutoSize = true, Checked = true };
             CheckBox chkCookies = new CheckBox() { Text = "Cookie 和其他网站数据", Location = new Point(30, 90), AutoSize = true, Checked = true };
             CheckBox chkCache = new CheckBox() { Text = "缓存的图片和文件", Location = new Point(30, 120), AutoSize = true, Checked = true };
             CheckBox chkAll = new CheckBox() { Text = "清除所有 (彻底重置)", Location = new Point(30, 160), AutoSize = true, Font = new Font("Segoe UI", 9, FontStyle.Bold), ForeColor = Color.Red };
-            
-            chkAll.CheckedChanged += (s, e) => {
-                bool isAll = chkAll.Checked;
-                chkHistory.Checked = isAll; chkCookies.Checked = isAll; chkCache.Checked = isAll;
-                chkHistory.Enabled = !isAll; chkCookies.Enabled = !isAll; chkCache.Enabled = !isAll;
-            };
-
+            chkAll.CheckedChanged += (s, e) => { bool isAll = chkAll.Checked; chkHistory.Checked = isAll; chkCookies.Checked = isAll; chkCache.Checked = isAll; chkHistory.Enabled = !isAll; chkCookies.Enabled = !isAll; chkCache.Enabled = !isAll; };
             clearForm.Controls.Add(chkHistory); clearForm.Controls.Add(chkCookies); clearForm.Controls.Add(chkCache); clearForm.Controls.Add(chkAll);
-
             Button btnConfirm = new Button() { Text = "立即清除", Location = new Point(120, 210), Size = new Size(100, 35), BackColor = Color.MistyRose };
-            btnConfirm.Click += async (s, e) => 
-            {
+            btnConfirm.Click += async (s, e) => {
                 btnConfirm.Text = "清理中..."; btnConfirm.Enabled = false;
                 try {
                     CoreWebView2Profile profile = webView.CoreWebView2.Profile;
-
-                    if (chkAll.Checked)
-                    {
-                        // 清除所有
-                        await profile.ClearBrowsingDataAsync(CoreWebView2BrowsingDataKinds.AllProfile);
-                    }
-                    else
-                    {
-                        // 修复点：初始化为 0，而不是 None
+                    if (chkAll.Checked) await profile.ClearBrowsingDataAsync(CoreWebView2BrowsingDataKinds.AllProfile);
+                    else {
                         CoreWebView2BrowsingDataKinds flags = (CoreWebView2BrowsingDataKinds)0;
-
                         if (chkHistory.Checked) flags |= CoreWebView2BrowsingDataKinds.BrowsingHistory;
                         if (chkCookies.Checked) flags |= CoreWebView2BrowsingDataKinds.Cookies;
-                        
-                        // 修复点：只保留 DiskCache，去掉了 MemoryCache
                         if (chkCache.Checked) flags |= CoreWebView2BrowsingDataKinds.DiskCache;
-
-                        if (flags != (CoreWebView2BrowsingDataKinds)0)
-                        {
-                            await profile.ClearBrowsingDataAsync(flags);
-                        }
+                        if (flags != (CoreWebView2BrowsingDataKinds)0) await profile.ClearBrowsingDataAsync(flags);
                     }
-
-                    MessageBox.Show("清理完成！✨", "提示");
-                    clearForm.Close();
-                    
-                    if (chkAll.Checked || chkHistory.Checked) NavigateToHome();
-                } 
-                catch (Exception ex) 
-                { 
-                    MessageBox.Show("清理失败: " + ex.Message); 
-                    clearForm.Close(); 
-                }
+                    MessageBox.Show("清理完成！✨", "提示"); clearForm.Close(); if (chkAll.Checked || chkHistory.Checked) NavigateToHome();
+                } catch (Exception ex) { MessageBox.Show("清理失败: " + ex.Message); clearForm.Close(); }
             };
-            clearForm.Controls.Add(btnConfirm);
-            clearForm.ShowDialog(this);
+            clearForm.Controls.Add(btnConfirm); clearForm.ShowDialog(this);
         }
 
         void NavigateToHome()
@@ -341,16 +337,75 @@ namespace CialloBrowser
             </html>";
             webView.NavigateToString(html);
         }
-
+        // --- 核心导航 (修复了 view-source 的 Bug) ---
+        // --- 核心导航 (兼容所有协议防崩) ---
         void NavigateToSite()
         {
             string input = txtUrl.Text.Trim();
-            if (string.IsNullOrEmpty(input) || input == "🏠 主页" || input.ToLower() == "about:blank") { NavigateToHome(); return; }
+            
+            // 1. 基础拦截
+            if (string.IsNullOrEmpty(input) || input == "🏠 主页" || input.ToLower() == "about:blank") 
+            {
+                NavigateToHome(); 
+                return;
+            }
+
+            // 2. 特殊协议处理：view-source 必崩，必须先去掉
+            if (input.StartsWith("view-source:", StringComparison.OrdinalIgnoreCase))
+            {
+                input = input.Substring("view-source:".Length);
+            }
+
             string targetUrl = "";
-            if (input.Contains(" ") || (!input.Contains(".") && !input.StartsWith("http"))) targetUrl = "https://www.bing.com/search?q=" + System.Web.HttpUtility.UrlEncode(input);
-            else { targetUrl = input; if (!targetUrl.StartsWith("http://") && !targetUrl.StartsWith("https://")) targetUrl = "https://" + targetUrl; }
-            webView.CoreWebView2.Navigate(targetUrl);
+            bool looksLikeSearch = false;
+
+            // 3. 智能判断：是网址还是搜索词
+            // 规则：如果有空格，或者没有点号(.)且没有协议头(:/)，就认为是搜索词
+            if (input.Contains(" ") || (!input.Contains(".") && !input.Contains(":/")))
+            {
+                looksLikeSearch = true;
+            }
+            else
+            {
+                // 认为是网址
+                targetUrl = input;
+                // 如果没有协议头 (比如输入 bilibili.com)，默认补上 https://
+                // 注意：如果用户输入了 orpheus://xxx，这里不会乱加，会保留原样
+                if (!System.Text.RegularExpressions.Regex.IsMatch(input, @"^[a-zA-Z0-9\+\.\-]+://"))
+                {
+                    targetUrl = "https://" + targetUrl;
+                }
+            }
+
+            // 4. 防死机
+            try
+            {
+                if (looksLikeSearch)
+                {
+                    // 肯定是搜索词，直接搜
+                    string searchUrl = "https://www.bing.com/search?q=" + System.Web.HttpUtility.UrlEncode(input);
+                    webView.CoreWebView2.Navigate(searchUrl);
+                }
+                else
+                {
+                    // 看起来像网址（包括 http, ftp, 甚至 xxx:https）
+                    // 尝试去访问
+                    webView.CoreWebView2.Navigate(targetUrl);
+                }
+            }
+            catch (System.ArgumentException)
+            {
+                // 捕获崩溃
+                string fallbackUrl = "https://www.bing.com/search?q=" + System.Web.HttpUtility.UrlEncode(input);
+                try { webView.CoreWebView2.Navigate(fallbackUrl); } catch { }
+            }
+            catch (Exception ex)
+            {
+                // 捕获其他未知错误
+                // 也是转去搜索
+                string fallbackUrl = "https://www.bing.com/search?q=" + System.Web.HttpUtility.UrlEncode(input);
+                try { webView.CoreWebView2.Navigate(fallbackUrl); } catch { }
+            }
         }
     }
 }
-
