@@ -1,11 +1,10 @@
 name: Build Browser
 
-# 当推送代码(push)或者手动点击(workflow_dispatch)时触发
 on: [push, workflow_dispatch]
 
 jobs:
   build:
-    runs-on: windows-latest  # 必须用 Windows 环境来编译 WinForms
+    runs-on: windows-latest
 
     steps:
     - name: Checkout Code (拉取代码)
@@ -20,7 +19,7 @@ jobs:
       run: dotnet restore
 
     - name: Build (编译)
-      run: dotnet build -c Release -o ./publish
+      run: dotnet build -c Release /p:Platform=x64 -o ./publish
 
     - name: Upload Artifact (上传成品)
       uses: actions/upload-artifact@v4
