@@ -45,7 +45,7 @@
 4.  选择 **Build My Browser** 工作流并手动触发 (Workflow Dispatch)，或直接 Push 代码触发。
 5.  构建完成后，在 Artifacts 中下载 `.exe` 压缩包即可运行。
 
-### 本地构建需求
+### 本地构建建议要求
 * Visual Studio 2022
 * .NET 8.0 Desktop Development workload
 * NuGet 包：`Microsoft.Web.WebView2`, `Microsoft.Data.Sqlite`
