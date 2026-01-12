@@ -30,9 +30,9 @@ namespace CialloBrowser
                 // 如果是单文件嵌入模式，尝试从资源读取
                 try {
                     var assembly = System.Reflection.Assembly.GetExecutingAssembly();
-                    // 注意：这里的资源名取决于您的命名空间，默认是 MyLovelyBrowser.logo.ico
+                    // 注意：这里的资源名取决于您的命名空间，默认是 CialloBrowser.logo.ico
                     // 如果图标不显示，可能需要检查资源名
-                    using (var stream = assembly.GetManifestResourceStream("MyLovelyBrowser.logo.ico"))
+                    using (var stream = assembly.GetManifestResourceStream("CialloBrowser.logo.ico"))
                     {
                         if(stream != null) this.Icon = new Icon(stream);
                     }
@@ -402,4 +402,5 @@ namespace CialloBrowser
         }
     }
 }
+
 
