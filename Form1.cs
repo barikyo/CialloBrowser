@@ -2,8 +2,8 @@ using System;
 using System.Drawing;
 using System.Windows.Forms;
 using System.IO;
-using System.Runtime.InteropServices; // 新增：用于调用 Windows API
-using Microsoft.Win32;                // 新增：用于监听系统颜色设置变化
+using System.Runtime.InteropServices;
+using Microsoft.Win32; // 用于监听系统设置
 using Microsoft.Web.WebView2.Core;
 using Microsoft.Web.WebView2.WinForms;
 using Microsoft.Data.Sqlite;
@@ -15,6 +15,7 @@ namespace CialloBrowser
         private WebView2 webView;
         private Panel topPanel;
         private TextBox txtUrl;
+        // 按钮定义
         private Button btnGo, btnBack, btnForward, btnRefresh, btnHome, btnHistory, btnClear;
 
         private const string BrowserName = "Ciallo浏览器";
@@ -25,37 +26,31 @@ namespace CialloBrowser
             this.Text = $"{BrowserName} - 初始化中...";
             this.Size = new Size(1200, 800);
             this.StartPosition = FormStartPosition.CenterScreen;
-            try { this.Icon = new Icon("logo.ico"); } catch 
-            {
-                // 如果是单文件嵌入模式，尝试从资源读取
-                try {
-                    var assembly = System.Reflection.Assembly.GetExecutingAssembly();
-                    // 注意：这里的资源名取决于您的命名空间，默认是 CialloBrowser.logo.ico
-                    // 如果图标不显示，可能需要检查资源名
-                    using (var stream = assembly.GetManifestResourceStream("CialloBrowser.logo.ico"))
-                    {
-                        if(stream != null) this.Icon = new Icon(stream);
-                    }
-                } catch {}
-            }
 
-            // 🔥🔥🔥 1. 初始化时应用深色模式 🔥🔥🔥
-            UpdateTitleBarTheme();
-
-            // 🔥🔥🔥 2. 监听系统颜色变化事件 🔥🔥🔥
-            SystemEvents.UserPreferenceChanged += (s, e) => 
+            // 智能查找图标
+            try 
             {
-                if (e.Category == UserPreferenceCategory.General)
+                var assembly = System.Reflection.Assembly.GetExecutingAssembly();
+                foreach (string name in assembly.GetManifestResourceNames())
                 {
-                    UpdateTitleBarTheme();
+                    if (name.EndsWith("logo.ico"))
+                    {
+                        using (var stream = assembly.GetManifestResourceStream(name))
+                        {
+                            if (stream != null) this.Icon = new Icon(stream);
+                        }
+                        break;
+                    }
                 }
-            };
+            } 
+            catch { }
 
             // --- 1. 顶部面板 ---
-            topPanel = new Panel() { Dock = DockStyle.Top, Height = 45, Padding = new Padding(5), BackColor = Color.WhiteSmoke };
+            topPanel = new Panel() { Dock = DockStyle.Top, Height = 45, Padding = new Padding(5) };
             this.Controls.Add(topPanel);
 
             // --- 2. 按钮群 ---
+            // 注意：我们用 CreateButton 统一创建，方便管理样式
             btnBack = CreateButton("←", 10);
             btnBack.Click += (s, e) => { if (webView.CanGoBack) webView.GoBack(); };
             topPanel.Controls.Add(btnBack);
@@ -77,11 +72,17 @@ namespace CialloBrowser
             topPanel.Controls.Add(btnHistory);
 
             btnClear = CreateButton("🧹", 210);
-            btnClear.ForeColor = Color.Red;
             btnClear.Click += (s, e) => ShowClearDataDialog(); 
             topPanel.Controls.Add(btnClear);
 
-            btnGo = new Button() { Text = "Go", Size = new Size(50, 30), Location = new Point(topPanel.Width - 65, 7), Anchor = AnchorStyles.Top | AnchorStyles.Right };
+            btnGo = new Button() { 
+                Text = "Go", 
+                Size = new Size(50, 30), 
+                Location = new Point(topPanel.Width - 65, 7), 
+                Anchor = AnchorStyles.Top | AnchorStyles.Right,
+                FlatStyle = FlatStyle.Flat, // 必须是 Flat 才能变色
+                FlatAppearance = { BorderSize = 0 }
+            };
             btnGo.Click += (s, e) => NavigateToSite();
             topPanel.Controls.Add(btnGo);
 
@@ -91,7 +92,8 @@ namespace CialloBrowser
                 Height = 30, 
                 Font = new Font("Segoe UI", 10), 
                 Width = topPanel.Width - 255 - 80, 
-                Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right 
+                Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right,
+                BorderStyle = BorderStyle.FixedSingle // 扁平风格更好看
             };
             
             txtUrl.KeyDown += (s, e) => { if (e.KeyCode == Keys.Enter) NavigateToSite(); };
@@ -103,77 +105,115 @@ namespace CialloBrowser
             this.Controls.Add(webView);
             webView.BringToFront();
 
+            // 🔥🔥🔥 核心：初始化时先判断一次颜色 🔥🔥🔥
+            ApplyThemeBasedOnSystem();
+
+            // 🔥🔥🔥 核心：监听系统颜色改变事件 🔥🔥🔥
+            SystemEvents.UserPreferenceChanged += (s, e) => 
+            {
+                // 当用户改变了系统设置（比如切了深色模式）
+                if (e.Category == UserPreferenceCategory.General)
+                {
+                    // 必须在 UI 线程执行
+                    this.Invoke(new Action(() => ApplyThemeBasedOnSystem()));
+                }
+            };
+
             InitializeWebView();
         }
 
-        // ---深色标题栏区---
+        // --- 创建按钮的辅助函数 ---
+        private Button CreateButton(string text, int x)
+        {
+            return new Button() { 
+                Text = text, 
+                Location = new Point(x, 7), 
+                Size = new Size(35, 30),
+                FlatStyle = FlatStyle.Flat, // 关键：设为 Flat 才能随意改背景色
+                FlatAppearance = { BorderSize = 0 }
+            };
+        }
 
+        // --- 🔥🔥🔥 变色龙核心逻辑 🔥🔥🔥 ---
         [DllImport("dwmapi.dll")]
         private static extern int DwmSetWindowAttribute(IntPtr hwnd, int attr, ref int attrValue, int attrSize);
-
-        private const int DWMWA_USE_IMMERSIVE_DARK_MODE_BEFORE_20H1 = 19;
         private const int DWMWA_USE_IMMERSIVE_DARK_MODE = 20;
 
-        private void UpdateTitleBarTheme()
+        private void ApplyThemeBasedOnSystem()
         {
             try
             {
-                // 1. 判断系统是否是深色模式
-                // 读取注册表: HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize
-                // AppsUseLightTheme = 0 (深色), 1 (浅色)
+                // 1. 读取注册表，判断当前系统是不是深色模式
+                // 0 = Dark (深色), 1 = Light (浅色)
                 bool isDarkMode = false;
                 using (var key = Registry.CurrentUser.OpenSubKey(@"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize"))
                 {
                     if (key != null)
                     {
                         var val = key.GetValue("AppsUseLightTheme");
-                        if (val is int i && i == 0)
-                        {
-                            isDarkMode = true;
-                        }
+                        if (val is int i && i == 0) isDarkMode = true;
                     }
                 }
 
-                // 2. 调用 API 设置标题栏颜色
-                int attribute = DWMWA_USE_IMMERSIVE_DARK_MODE;
+                // 2. 设置 Windows 窗口标题栏颜色 (调用 DWM API)
                 int useImmersiveDarkMode = isDarkMode ? 1 : 0;
+                DwmSetWindowAttribute(this.Handle, DWMWA_USE_IMMERSIVE_DARK_MODE, ref useImmersiveDarkMode, sizeof(int));
 
-                if (DwmSetWindowAttribute(this.Handle, attribute, ref useImmersiveDarkMode, sizeof(int)) != 0)
-                {
-                    // 如果失败，尝试旧版本的 API (针对 Win10 早期版本)
-                    DwmSetWindowAttribute(this.Handle, DWMWA_USE_IMMERSIVE_DARK_MODE_BEFORE_20H1, ref useImmersiveDarkMode, sizeof(int));
-                }
-
-                // 3. 顺便改一下工具栏颜色，让整体更协调
+                // 3. 根据模式，给界面“刷漆”
                 if (isDarkMode)
                 {
-                    topPanel.BackColor = Color.FromArgb(45, 45, 48); // 深灰背景
-                    txtUrl.BackColor = Color.FromArgb(30, 30, 30);   // 输入框深黑
-                    txtUrl.ForeColor = Color.White;                // 文字变白
-                    foreach(Control c in topPanel.Controls) { if(c is Button) { c.BackColor = Color.FromArgb(60, 60, 60); c.ForeColor = Color.White; } }
-                    // 特殊处理清除按钮的红色
+                    // ⚫️ 深色模式配色
+                    this.BackColor = Color.FromArgb(32, 32, 32);       // 窗体底色
+                    topPanel.BackColor = Color.FromArgb(45, 45, 48);   // 顶部工具栏底色
+                    
+                    // 地址栏变黑
+                    txtUrl.BackColor = Color.FromArgb(30, 30, 30);
+                    txtUrl.ForeColor = Color.White;
+
+                    // 按钮变黑
+                    foreach(Control c in topPanel.Controls) 
+                    { 
+                        if(c is Button btn) 
+                        { 
+                            btn.BackColor = Color.FromArgb(60, 60, 60); // 按钮背景
+                            btn.ForeColor = Color.White;              // 按钮文字
+                            btn.FlatAppearance.MouseOverBackColor = Color.FromArgb(80, 80, 80); // 鼠标悬停
+                        } 
+                    }
+                    // 特殊处理：清除按钮保持红色系，但稍微亮一点
                     btnClear.ForeColor = Color.FromArgb(255, 100, 100); 
                 }
                 else
                 {
-                    topPanel.BackColor = Color.WhiteSmoke;
+                    // ⚪️ 浅色模式配色 (恢复经典)
+                    this.BackColor = SystemColors.Control; // 恢复系统默认灰
+                    topPanel.BackColor = Color.WhiteSmoke; // 工具栏浅灰
+                    
+                    // 地址栏变白
                     txtUrl.BackColor = Color.White;
                     txtUrl.ForeColor = Color.Black;
-                    foreach(Control c in topPanel.Controls) { if(c is Button) { c.BackColor = Control.DefaultBackColor; c.ForeColor = Color.Black; } }
+
+                    // 按钮恢复透明/浅色
+                    foreach(Control c in topPanel.Controls) 
+                    { 
+                        if(c is Button btn) 
+                        { 
+                            btn.BackColor = Color.Transparent; // 恢复透明感
+                            btn.ForeColor = Color.Black;       // 黑色文字
+                            btn.FlatAppearance.MouseOverBackColor = Color.LightGray; // 鼠标悬停变灰
+                        } 
+                    }
+                    // 清除按钮恢复正红
                     btnClear.ForeColor = Color.Red;
                 }
+                
+                // 强制刷新一下界面，防止有残影
+                topPanel.Invalidate();
             }
             catch 
             {
-                // 如果出错（比如不是Win10/11），就保持默认，不让程序崩掉
+                // 如果系统不支持或者读注册表失败，就保持默认，不报错
             }
-        }
-
-        // --- 以下是常规功能 ---
-
-        private Button CreateButton(string text, int x)
-        {
-            return new Button() { Text = text, Location = new Point(x, 7), Size = new Size(35, 30) };
         }
 
         async void InitializeWebView()
@@ -201,7 +241,39 @@ namespace CialloBrowser
             NavigateToHome();
         }
 
-        // --- 历史记录 (防死机副本模式) ---
+        // --- 核心导航 (无警告版) ---
+        void NavigateToSite()
+        {
+            string input = txtUrl.Text.Trim();
+            if (string.IsNullOrEmpty(input) || input == "🏠 主页" || input.ToLower() == "about:blank") { NavigateToHome(); return; }
+            if (input.StartsWith("view-source:", StringComparison.OrdinalIgnoreCase)) input = input.Substring("view-source:".Length);
+
+            string targetUrl = "";
+            bool looksLikeSearch = false;
+
+            if (input.Contains(" ") || (!input.Contains(".") && !input.Contains(":/"))) looksLikeSearch = true;
+            else
+            {
+                targetUrl = input;
+                if (!System.Text.RegularExpressions.Regex.IsMatch(input, @"^[a-zA-Z0-9\+\.\-]+://")) targetUrl = "https://" + targetUrl;
+            }
+
+            try
+            {
+                if (looksLikeSearch) webView.CoreWebView2.Navigate("https://www.bing.com/search?q=" + System.Web.HttpUtility.UrlEncode(input));
+                else webView.CoreWebView2.Navigate(targetUrl);
+            }
+            catch (System.ArgumentException)
+            {
+                try { webView.CoreWebView2.Navigate("https://www.bing.com/search?q=" + System.Web.HttpUtility.UrlEncode(input)); } catch { }
+            }
+            catch (Exception) 
+            {
+                try { webView.CoreWebView2.Navigate("https://www.bing.com/search?q=" + System.Web.HttpUtility.UrlEncode(input)); } catch { }
+            }
+        }
+
+        // --- 历史记录 (副本模式) ---
         private void ShowHistoryWindow()
         {
             Form historyForm = new Form();
@@ -245,7 +317,7 @@ namespace CialloBrowser
             historyForm.Controls.Add(listBox); historyForm.ShowDialog(this);
         }
 
-        // --- 高级清理面板 (修复版) ---
+        // --- 高级清理面板 (无警告版) ---
         private void ShowClearDataDialog()
         {
             Form clearForm = new Form(); clearForm.Text = "清除浏览数据"; clearForm.Size = new Size(350, 300);
@@ -337,70 +409,5 @@ namespace CialloBrowser
             </html>";
             webView.NavigateToString(html);
         }
-        // --- 核心导航 (兼容所有协议、防崩、无警告) ---
-        void NavigateToSite()
-        {
-            string input = txtUrl.Text.Trim();
-            
-            // 1. 基础拦截
-            if (string.IsNullOrEmpty(input) || input == "🏠 主页" || input.ToLower() == "about:blank") 
-            {
-                NavigateToHome(); 
-                return;
-            }
-
-            // 2. 特殊协议处理
-            if (input.StartsWith("view-source:", StringComparison.OrdinalIgnoreCase))
-            {
-                input = input.Substring("view-source:".Length);
-            }
-
-            string targetUrl = "";
-            bool looksLikeSearch = false;
-
-            // 3. 智能判断
-            if (input.Contains(" ") || (!input.Contains(".") && !input.Contains(":/")))
-            {
-                looksLikeSearch = true;
-            }
-            else
-            {
-                targetUrl = input;
-                // 正则判断是否缺协议头
-                if (!System.Text.RegularExpressions.Regex.IsMatch(input, @"^[a-zA-Z0-9\+\.\-]+://"))
-                {
-                    targetUrl = "https://" + targetUrl;
-                }
-            }
-
-            // 4. 执行导航 (防崩)
-            try
-            {
-                if (looksLikeSearch)
-                {
-                    string searchUrl = "https://www.bing.com/search?q=" + System.Web.HttpUtility.UrlEncode(input);
-                    webView.CoreWebView2.Navigate(searchUrl);
-                }
-                else
-                {
-                    webView.CoreWebView2.Navigate(targetUrl);
-                }
-            }
-            catch (System.ArgumentException)
-            {
-                // 捕获无效格式错误 (如 xxx:https://)
-                string fallbackUrl = "https://www.bing.com/search?q=" + System.Web.HttpUtility.UrlEncode(input);
-                try { webView.CoreWebView2.Navigate(fallbackUrl); } catch { }
-            }
-            // 👇👇👇 修改了这里：去掉了 ex 变量，编译器就不唠叨啦！
-            catch (Exception) 
-            {
-                // 捕获其他未知错误
-                string fallbackUrl = "https://www.bing.com/search?q=" + System.Web.HttpUtility.UrlEncode(input);
-                try { webView.CoreWebView2.Navigate(fallbackUrl); } catch { }
-            }
-        }
     }
 }
-
-
