@@ -2,10 +2,11 @@
 
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
-    <TargetFramework>net48</TargetFramework> 
+    <TargetFramework>net48</TargetFramework>
     
     <UseWindowsForms>true</UseWindowsForms>
-    <LangVersion>10.0</LangVersion> <Nullable>disable</Nullable>
+    <LangVersion>10.0</LangVersion>
+    <Nullable>disable</Nullable>
     
     <AssemblyName>CialloBrowser</AssemblyName> 
     <ApplicationIcon>logo.ico</ApplicationIcon>
@@ -22,6 +23,8 @@
   <ItemGroup>
     <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.2210.55" />
     <PackageReference Include="Microsoft.Data.Sqlite" Version="8.0.0" />
+    
+    <Reference Include="System.Web" />
     <Reference Include="System.Net.Http" />
   </ItemGroup>
 
@@ -31,8 +34,8 @@
 
 </Project>
 
-
     
+
 
 
 
