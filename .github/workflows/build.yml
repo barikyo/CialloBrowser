@@ -19,10 +19,8 @@ jobs:
     - name: Restore Dependencies (下载 WebView2 包)
       run: dotnet restore
 
-    - name: Publish (发布单文件)
-      # 使用 publish 命令，指定 Release 配置，指定 win-x64 平台
-      # --no-self-contained 对应csproj里的设置，减小体积
-      run: dotnet publish -c Release -r win-x64 --no-self-contained -o ./publish
+    - name: Build (编译)
+      run: dotnet build -c Release -o ./publish
 
     - name: Upload Artifact (上传成品)
       uses: actions/upload-artifact@v4
