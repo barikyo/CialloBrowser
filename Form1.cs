@@ -216,29 +216,36 @@ namespace CialloBrowser
             }
         }
 
-        async void InitializeWebView()
+       async void InitializeWebView()
         {
-            var env = await CoreWebView2Environment.CreateAsync(null, fixedUserDataFolder);
-            await webView.EnsureCoreWebView2Async(env);
-            webView.CoreWebView2.NewWindowRequested += (s, e) => { e.Handled = true; webView.CoreWebView2.Navigate(e.Uri); };
-            
-            webView.SourceChanged += (s, e) =>
+            try
             {
-                 if (!txtUrl.Focused) 
-                 {
-                     string src = webView.Source.ToString();
-                     if (src.StartsWith("data:")) txtUrl.Text = "🏠 主页"; 
-                     else txtUrl.Text = src;
-                 }
-            };
-            
-            webView.CoreWebView2.DocumentTitleChanged += (s, e) =>
+                // 🔥🔥🔥 核心修改：针对 RTX 4060 优化的启动参数 🔥🔥🔥
+                
+                var options = new CoreWebView2EnvironmentOptions();
+                
+                // 解释一下这些咒语：
+                // 1. Av1VideoDecoding: 强制开启 AV1 解码功能 (主角!)
+                // 2. HevcVideoDecoding: 顺便把 H.265 也开了
+                // 3. --ignore-gpu-blocklist: 即使驱动被谷歌拉黑，也强行使用 GPU 加速
+                // 4. --use-gl=desktop: 增强 Windows 上的硬件加速兼容性
+                options.AdditionalBrowserArguments = "--enable-features=Av1VideoDecoding,HevcVideoDecoding,PlatformHEVCDecoderSupport --ignore-gpu-blocklist --use-gl=desktop";
+                
+                // 使用带参数的 options 来创建环境
+                var env = await CoreWebView2Environment.CreateAsync(null, fixedUserDataFolder, options);
+                
+                await webView.EnsureCoreWebView2Async(env);
+                
+                webView.CoreWebView2.NewWindowRequested += (s, e) => { e.Handled = true; webView.CoreWebView2.Navigate(e.Uri); };
+                webView.SourceChanged += (s, e) => { if (!txtUrl.Focused) { string src = webView.Source.ToString(); if (src.StartsWith("data:")) txtUrl.Text = "🏠 主页"; else txtUrl.Text = src; } };
+                webView.CoreWebView2.DocumentTitleChanged += (s, e) => { string t = webView.CoreWebView2.DocumentTitle; this.Text = (string.IsNullOrEmpty(t) || t == "about:blank") ? BrowserName : $"{t} - {BrowserName}"; };
+                
+                NavigateToHome();
+            }
+            catch (Exception ex)
             {
-                string pageTitle = webView.CoreWebView2.DocumentTitle;
-                if (string.IsNullOrEmpty(pageTitle) || pageTitle == "about:blank") this.Text = BrowserName;
-                else this.Text = $"{pageTitle} - {BrowserName}";
-            };
-            NavigateToHome();
+                MessageBox.Show("WebView2 初始化失败。\n错误: " + ex.Message);
+            }
         }
 
         // --- 核心导航 (无警告版) ---
@@ -411,3 +418,4 @@ namespace CialloBrowser
         }
     }
 }
+
