@@ -105,10 +105,10 @@ namespace CialloBrowser
             this.Controls.Add(webView);
             webView.BringToFront();
 
-            // 🔥🔥🔥 核心：初始化时先判断一次颜色 🔥🔥🔥
+            // 核心：初始化时先判断一次颜色
             ApplyThemeBasedOnSystem();
 
-            // 🔥🔥🔥 核心：监听系统颜色改变事件 🔥🔥🔥
+            // 核心：监听系统颜色改变事件
             SystemEvents.UserPreferenceChanged += (s, e) => 
             {
                 // 当用户改变了系统设置（比如切了深色模式）
@@ -134,7 +134,7 @@ namespace CialloBrowser
             };
         }
 
-        // --- 🔥🔥🔥 变色龙核心逻辑 🔥🔥🔥 ---
+        // --- 变色逻辑 ---
         [DllImport("dwmapi.dll")]
         private static extern int DwmSetWindowAttribute(IntPtr hwnd, int attr, ref int attrValue, int attrSize);
         private const int DWMWA_USE_IMMERSIVE_DARK_MODE = 20;
@@ -220,22 +220,29 @@ namespace CialloBrowser
         {
             try
             {
-                // 🔥🔥🔥 核心修改：针对 RTX 4060 优化的启动参数 🔥🔥🔥
-                
                 var options = new CoreWebView2EnvironmentOptions();
                 
-                // 解释一下这些咒语：
-                // 1. Av1VideoDecoding: 强制开启 AV1 解码功能 (主角!)
-                // 2. HevcVideoDecoding: 顺便把 H.265 也开了
-                // 3. --ignore-gpu-blocklist: 即使驱动被谷歌拉黑，也强行使用 GPU 加速
-                // 4. --use-gl=desktop: 增强 Windows 上的硬件加速兼容性
-                options.AdditionalBrowserArguments = "--enable-features=Av1VideoDecoding,HevcVideoDecoding,PlatformHEVCDecoderSupport --ignore-gpu-blocklist --use-gl=desktop";
+                // 修正说明
+                // 1. 删除了 --use-gl=desktop (这是导致崩溃的元凶！)
+                // 2. 删除了 VaapiVideoDecoding (这是 Linux 用的，Windows 用不上)
+                // 3. 保留了 D3D11VideoDecoder (这是 Windows 硬件解码的核心)
+                // 4. 保留了 AV1 和 HEVC 的开启指令
                 
-                // 使用带参数的 options 来创建环境
+                string args = "--enable-features=D3D11VideoDecoder,HevcVideoDecoding,Av1VideoDecoding,PlatformHEVCDecoderSupport,MsPlayReady " +
+                              "--ignore-gpu-blocklist " +
+                              "--disable-gpu-driver-bug-workarounds " +
+                              "--enable-gpu-rasterization " +
+                              "--force-gpu-rasterization";
+
+                options.AdditionalBrowserArguments = args;
+                
                 var env = await CoreWebView2Environment.CreateAsync(null, fixedUserDataFolder, options);
-                
                 await webView.EnsureCoreWebView2Async(env);
                 
+                // 伪装 User-Agent (为了让 B站 识别)
+                var settings = webView.CoreWebView2.Settings;
+                settings.UserAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36 Edg/120.0.0.0";
+
                 webView.CoreWebView2.NewWindowRequested += (s, e) => { e.Handled = true; webView.CoreWebView2.Navigate(e.Uri); };
                 webView.SourceChanged += (s, e) => { if (!txtUrl.Focused) { string src = webView.Source.ToString(); if (src.StartsWith("data:")) txtUrl.Text = "🏠 主页"; else txtUrl.Text = src; } };
                 webView.CoreWebView2.DocumentTitleChanged += (s, e) => { string t = webView.CoreWebView2.DocumentTitle; this.Text = (string.IsNullOrEmpty(t) || t == "about:blank") ? BrowserName : $"{t} - {BrowserName}"; };
@@ -418,4 +425,5 @@ namespace CialloBrowser
         }
     }
 }
+
 
