@@ -171,8 +171,19 @@ namespace CialloBrowser
         async void InitializeWebView()
         {
             try
-            {
-                var env = await CoreWebView2Environment.CreateAsync(null, fixedUserDataFolder);
+            {                
+                var options = new CoreWebView2EnvironmentOptions();
+                
+                // 解释一下这些咒语：
+                // 1. Av1VideoDecoding: 强制开启 AV1 解码功能
+                // 2. HevcVideoDecoding: 顺便把 H.265 也开了
+                // 3. --ignore-gpu-blocklist: 即使驱动被谷歌拉黑，也强行使用 GPU 加速
+                // 4. --use-gl=desktop: 增强 Windows 上的硬件加速兼容性
+                options.AdditionalBrowserArguments = "--enable-features=Av1VideoDecoding,HevcVideoDecoding,PlatformHEVCDecoderSupport --ignore-gpu-blocklist --use-gl=desktop";
+                
+                // 使用带参数的 options 来创建环境
+                var env = await CoreWebView2Environment.CreateAsync(null, fixedUserDataFolder, options);
+                
                 await webView.EnsureCoreWebView2Async(env);
                 
                 webView.CoreWebView2.NewWindowRequested += (s, e) => { e.Handled = true; webView.CoreWebView2.Navigate(e.Uri); };
@@ -340,3 +351,4 @@ namespace CialloBrowser
         }
     }
 }
+
