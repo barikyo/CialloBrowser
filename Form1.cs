@@ -174,8 +174,8 @@ namespace CialloBrowser
             {
                 var options = new CoreWebView2EnvironmentOptions();
                 
-                // 🔥🔥🔥 修正说明 🔥🔥🔥
-                // 1. 删除了 --use-gl=desktop (这是导致崩溃的元凶！)
+                // 修正说明
+                // 1. 删除了 --use-gl=desktop
                 // 2. 删除了 VaapiVideoDecoding (这是 Linux 用的，Windows 用不上)
                 // 3. 保留了 D3D11VideoDecoder (这是 Windows 硬件解码的核心)
                 // 4. 保留了 AV1 和 HEVC 的开启指令
@@ -360,5 +360,6 @@ namespace CialloBrowser
         }
     }
 }
+
 
 
