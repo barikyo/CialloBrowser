@@ -8,9 +8,9 @@
 一个基于 **Microsoft WebView2 (Chromium)** 内核，使用 **C# WinForms** 打造的轻量级、现代化、极简风格浏览器。<br>
 支持Windows10及更新系统。（支持.NET8.0 Runtime的系统可使用）
 
-> 已废弃.NET 8.0版。有时需要安装Runtime，使用时并不方便，且对旧设备兼容性差。
+> **已废弃.NET 8.0版。需要安装 .NET 8.0 Runtime，对于新手来说，使用时并不方便，且对旧设备兼容性差。**
 ---
-
+**注意：由于Webview2限制，可能无法播放HEVC视频。**
 ## ✨ 功能特性 (Features)
 
 * **🚀 强劲内核**：基于 Edge Chromium (WebView2)，网页加载速度快，兼容性极佳。
